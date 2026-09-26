@@ -157,7 +157,7 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
       },
     });
     const watchCost = () => costWatch.check();
-    const claude = createClaude(config.ANTHROPIC_API_KEY);
+    const claude = createClaude(config.ANTHROPIC_API_KEY, config.ANTHROPIC_WORKSPACE_ID);
     // The live coach (coached calls only): metrics, the stage tracker and tips.
     const coach = new LiveCoach({
       mode: meta.mode,

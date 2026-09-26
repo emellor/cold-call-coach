@@ -288,6 +288,15 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
     the verdict for a minute, and `GET /api/health` reports a refusal as the calls reason.
   - `useCall` ignores the disconnect LiveKit reports for a refused join, so the dial error
     names the refusal (`LIVEKIT_REFUSED_TOKEN`) instead of a dropped connection.
+- **Claude keys.** A key bound to a user or a service account can belong to the
+  organization instead of a workspace. Claude then refuses every request with a 400,
+  "not scoped to a workspace", unless it carries an `anthropic-workspace-id` header.
+  - Both apps take an optional `ANTHROPIC_WORKSPACE_ID` (`wrkspc_…`) and send it as that
+    header through `claudeHeaders` (core). The SDK sends the header only for its own
+    credential profiles, never with an API key, so setting the variable alone does nothing.
+  - The agent's `describeClaudeFailure` and the API's `describeClaudeError` name that
+    refusal (`describeNoWorkspace`). Other failures are given in Claude's own words
+    (`claudeErrorMessage`), because "Claude failed (400)" gave nothing to act on.
 - **Render** (`render.yaml`).
   - Builds run `corepack pnpm`, which needs no global install (`npm install -g pnpm` is
     reported to fail on Render with EROFS). Start and pre-deploy commands are plain

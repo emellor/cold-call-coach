@@ -13,9 +13,35 @@ describe('describeClaudeFailure', () => {
     );
     expect(describeClaudeFailure(apiError(429))).toBe('Claude is rate-limiting this key.');
     expect(describeClaudeFailure(apiError(529))).toBe('Claude is overloaded right now.');
-    expect(describeClaudeFailure(apiError(400))).toBe('Claude failed (400).');
     expect(describeClaudeFailure(new APIUserAbortError())).toBe('Claude took too long to answer.');
     expect(describeClaudeFailure(new Error('socket hang up'))).toBe('Claude could not be reached.');
+  });
+
+  it('names a key that belongs to no workspace, which Claude answers with a 400', () => {
+    const refused = APIError.generate(
+      400,
+      {
+        type: 'error',
+        error: {
+          type: 'invalid_request_error',
+          message:
+            'This API key is not scoped to a workspace, so this request must include the ' +
+            'anthropic-workspace-id header with the ID of the workspace to use.',
+        },
+      },
+      undefined,
+      new Headers(),
+    );
+    expect(describeClaudeFailure(refused)).toBe(
+      "Claude refused the agent's key because it isn't in a workspace: use an " +
+        'ANTHROPIC_API_KEY created in a workspace, or set ANTHROPIC_WORKSPACE_ID to one (wrkspc_…).',
+    );
+  });
+
+  it("gives any other failure in Claude's own words, or the bare status without them", () => {
+    expect(describeClaudeFailure(apiError(400))).toBe('Claude failed (400): raw.');
+    const silent = APIError.generate(500, undefined, 'Internal Server Error', new Headers());
+    expect(describeClaudeFailure(silent)).toBe('Claude failed (500).');
   });
 });
 

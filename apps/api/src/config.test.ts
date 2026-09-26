@@ -46,6 +46,16 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ REVIEW_EFFORT: 'extreme' })).toThrowError(/REVIEW_EFFORT/);
   });
 
+  it('takes a workspace for a key that has none, by its ID and not its name', () => {
+    expect(loadConfig({ ANTHROPIC_WORKSPACE_ID: ' wrkspc_01AbC\n' }).ANTHROPIC_WORKSPACE_ID).toBe(
+      'wrkspc_01AbC',
+    );
+    expect(loadConfig({ ANTHROPIC_WORKSPACE_ID: '' }).ANTHROPIC_WORKSPACE_ID).toBeUndefined();
+    expect(() => loadConfig({ ANTHROPIC_WORKSPACE_ID: 'Default' })).toThrowError(
+      /ANTHROPIC_WORKSPACE_ID: must be a workspace ID, which starts with wrkspc_/,
+    );
+  });
+
   it("refuses .env.example's development secret in production", () => {
     const production = {
       NODE_ENV: 'production',

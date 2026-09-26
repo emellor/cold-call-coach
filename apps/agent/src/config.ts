@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { liveKitPairProblem } from '@ccc/core';
+import { WORKSPACE_ID, WORKSPACE_ID_PROBLEM, liveKitPairProblem } from '@ccc/core';
 import { z } from 'zod';
 
 const repoEnvFile = fileURLToPath(new URL('../../../.env', import.meta.url));
@@ -39,6 +39,10 @@ export type WorkerConfig = z.infer<typeof WorkerConfig>;
  */
 const CallConfig = z.object({
   ANTHROPIC_API_KEY: nonEmpty(),
+  /** Only for a key that belongs to the organization, not a workspace: the workspace to use. */
+  ANTHROPIC_WORKSPACE_ID: blankAsUnset(
+    z.string().regex(WORKSPACE_ID, WORKSPACE_ID_PROBLEM).optional(),
+  ),
   DEEPGRAM_API_KEY: nonEmpty(),
   CARTESIA_API_KEY: nonEmpty(),
   /** The voice for a scenario whose `voice.voiceId` is still the placeholder. */

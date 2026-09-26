@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { PriceTable, ScenarioCatalog } from '@ccc/contracts';
+import { claudeHeaders } from '@ccc/core';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import type pg from 'pg';
 import { ZodError } from 'zod';
@@ -54,7 +55,10 @@ declare module 'fastify' {
 function defaultReviewer(config: Config, prices: PriceTable): Reviewer | null {
   if (!config.ANTHROPIC_API_KEY) return null;
   return claudeReviewer({
-    messages: new Anthropic({ apiKey: config.ANTHROPIC_API_KEY }).beta.messages,
+    messages: new Anthropic({
+      apiKey: config.ANTHROPIC_API_KEY,
+      defaultHeaders: claudeHeaders(config.ANTHROPIC_WORKSPACE_ID),
+    }).beta.messages,
     model: config.REVIEW_MODEL,
     effort: config.REVIEW_EFFORT,
     prices,

@@ -156,8 +156,27 @@ describe('describeClaudeError', () => {
     expect(describeClaudeError(apiError(401))).toContain('check ANTHROPIC_API_KEY');
     expect(describeClaudeError(apiError(429))).toContain('rate-limiting');
     expect(describeClaudeError(apiError(529))).toContain('overloaded');
-    expect(describeClaudeError(apiError(400))).toMatch(/^Claude answered 400/);
+    expect(describeClaudeError(apiError(400))).toBe('Claude answered 400: raw');
     expect(describeClaudeError(new Error('socket hang up'))).toBe('socket hang up');
+  });
+
+  it('names a key that belongs to no workspace, which Claude answers with a 400', () => {
+    const refused = APIError.generate(
+      400,
+      {
+        type: 'error',
+        error: {
+          type: 'invalid_request_error',
+          message: 'This API key is not scoped to a workspace, so this request must include …',
+        },
+      },
+      undefined,
+      new Headers(),
+    );
+    expect(describeClaudeError(refused)).toBe(
+      "Claude refused the API's key because it isn't in a workspace: use an " +
+        'ANTHROPIC_API_KEY created in a workspace, or set ANTHROPIC_WORKSPACE_ID to one (wrkspc_…).',
+    );
   });
 
   it('is what a failed review reports', async () => {

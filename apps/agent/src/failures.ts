@@ -1,6 +1,7 @@
 // Provider failures in words the rep can act on, for call.notice and for the
 // reason a failed call ends with. Keys are named by their .env variable.
 import { APIError, APIUserAbortError } from '@anthropic-ai/sdk';
+import { claudeErrorMessage, describeNoWorkspace, isNoWorkspaceRefusal } from '@ccc/core';
 import { APIConnectionError, APIStatusError, APITimeoutError } from '@livekit/agents';
 
 export const CLAUDE_TIMED_OUT = 'Claude took too long to answer.';
@@ -15,12 +16,19 @@ export function describeClaudeFailure(error: unknown): string {
     return CLAUDE_TIMED_OUT;
   }
   if (error instanceof APIError) {
+    const said = claudeErrorMessage(error.error);
+    if (isNoWorkspaceRefusal(error.status, said)) return describeNoWorkspace('agent');
     if (error.status === 401 || error.status === 403) {
       return "Claude rejected the agent's key: check ANTHROPIC_API_KEY.";
     }
     if (error.status === 429) return 'Claude is rate-limiting this key.';
     if (error.status === 529 || error.status === 503) return 'Claude is overloaded right now.';
-    if (error.status !== undefined) return `Claude failed (${error.status}).`;
+    // Anything else is best told in Claude's own words; a bare status says nothing.
+    if (error.status !== undefined) {
+      return said
+        ? `Claude failed (${error.status}): ${said.replace(/[.\s]+$/, '')}.`
+        : `Claude failed (${error.status}).`;
+    }
   }
   return CLAUDE_UNREACHABLE;
 }

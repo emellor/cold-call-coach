@@ -30,7 +30,8 @@ const USAGE = `Usage: pnpm simulate [options]
   --review                     Run the post-call review on each call and print the result
                                (REVIEW_MODEL / REVIEW_EFFORT; a high-effort call each)
 
-Reads ANTHROPIC_API_KEY, PROSPECT_MODEL/EFFORT and COACH_MODEL/EFFORT from .env;
+Reads ANTHROPIC_API_KEY (and ANTHROPIC_WORKSPACE_ID, for a key in no workspace),
+PROSPECT_MODEL/EFFORT and COACH_MODEL/EFFORT from .env;
 SIM_REP_MODEL picks the model that plays the rep (default claude-opus-5).
 Pass criteria: the terrible rep books no meetings; the good rep books at least 3 in 5.`;
 
@@ -163,7 +164,8 @@ async function main(): Promise<void> {
     coach: process.env.COACH_MODEL || 'claude-opus-5',
     coachEffort: effortFrom('COACH_EFFORT', 'low'),
   };
-  const messages = createClaude(apiKey).beta.messages;
+  const messages = createClaude(apiKey, process.env.ANTHROPIC_WORKSPACE_ID?.trim() || undefined)
+    .beta.messages;
   const reviewModel = process.env.REVIEW_MODEL || 'claude-opus-5';
   const reviewEffort = effortFrom('REVIEW_EFFORT', 'high');
   const prices = await readPriceTable();
