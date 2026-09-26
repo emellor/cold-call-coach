@@ -1,7 +1,7 @@
 import { InternalScenarioResponse, ScenarioId, ScenarioListResponse } from '@ccc/contracts';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { AppDeps } from '../app.ts';
+import type { AppContext } from '../app.ts';
 import { requireInternalSecret } from '../internal.ts';
 import { byDifficulty, latestScenario, latestScenarios, toSummary } from '../scenarios.ts';
 
@@ -9,7 +9,7 @@ const ScenarioParams = z.object({ id: ScenarioId });
 
 export function registerScenarioRoutes(
   app: FastifyInstance,
-  { config, db, catalog }: AppDeps,
+  { config, db, catalog }: AppContext,
 ): void {
   app.get('/api/scenarios', async (request) => {
     const specs = await latestScenarios(db, request.log);

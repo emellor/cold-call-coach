@@ -1,4 +1,4 @@
-import type { CallOutcome, RubricCriterionKey } from '@ccc/contracts';
+import type { CallOutcome, CostKey, CostLine, RubricCriterionKey } from '@ccc/contracts';
 
 export const STAGE_LABELS: Record<RubricCriterionKey, string> = {
   opener: 'Opener',
@@ -39,3 +39,30 @@ export const dateTime = (iso: string): string =>
     hour: '2-digit',
     minute: '2-digit',
   });
+
+/** 0.2918 → "$0.29"; anything under a cent shows as "<$0.01". */
+export function money(usd: number | null): string {
+  if (usd === null) return '–';
+  if (usd > 0 && usd < 0.005) return '<$0.01';
+  return `$${usd.toFixed(2)}`;
+}
+
+export const COST_LABELS: Record<CostKey, string> = {
+  prospect: 'Her replies',
+  judge: 'The coach judging your turns',
+  hint: 'Hints',
+  review: 'This review',
+  stt: 'Hearing you',
+  tts: 'Her voice',
+};
+
+const count = (n: number) => n.toLocaleString('en-GB');
+
+/** "claude-opus-5 · 25,900 tokens (20,000 from cache)", "nova-3 · 1.38 min". */
+export function costDetail(line: CostLine): string {
+  if (line.quantity === null) return line.model;
+  if (line.unit === 'minutes') return `${line.model} · ${line.quantity} min`;
+  if (line.unit === 'characters') return `${line.model} · ${count(line.quantity)} characters`;
+  const cached = line.cachedTokens ? ` (${count(line.cachedTokens)} from cache)` : '';
+  return `${line.model} · ${count(line.quantity)} tokens${cached}`;
+}

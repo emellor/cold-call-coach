@@ -38,6 +38,9 @@ const Config = z.object({
     (v) => (v === '' ? undefined : v),
     z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('high'),
   ),
+  // One password for a deployed app: every /api route then needs its session
+  // cookie. Unset locally (no sign-in); required in production.
+  APP_PASSWORD: optional(z.string().min(8, 'must be at least 8 characters')),
 });
 export type Config = z.infer<typeof Config>;
 
@@ -59,14 +62,21 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     input.DATABASE_URL = DEV_DATABASE_URL;
   }
   const parsed = Config.safeParse(input);
-  if (
-    parsed.success &&
-    parsed.data.NODE_ENV === 'production' &&
-    parsed.data.INTERNAL_API_SECRET === DEV_INTERNAL_API_SECRET
-  ) {
-    throw new ConfigError(
-      'Invalid API configuration:\n  - INTERNAL_API_SECRET: is the development value; generate one with `openssl rand -hex 32`.',
-    );
+  if (parsed.success && parsed.data.NODE_ENV === 'production') {
+    const problems = [
+      parsed.data.INTERNAL_API_SECRET === DEV_INTERNAL_API_SECRET
+        ? '  - INTERNAL_API_SECRET: is the development value; generate one with `openssl rand -hex 32`.'
+        : '',
+      parsed.data.APP_PASSWORD
+        ? ''
+        : '  - APP_PASSWORD: is required in production, where anyone could otherwise reach the app and spend your keys.',
+      parsed.data.APP_PASSWORD && !parsed.data.INTERNAL_API_SECRET
+        ? '  - INTERNAL_API_SECRET: is required with APP_PASSWORD; sessions are signed with it.'
+        : '',
+    ].filter(Boolean);
+    if (problems.length) {
+      throw new ConfigError(['Invalid API configuration:', ...problems].join('\n'));
+    }
   }
   if (!parsed.success) {
     const lines = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`);

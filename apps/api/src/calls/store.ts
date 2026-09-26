@@ -1,25 +1,25 @@
 // Reading and writing a call's log, transcript and review.
 import {
+  CallLog,
   type CallDetail,
-  type CallLog,
   type CallReview,
   type CallSummary,
   ProspectState,
   ReviewResult,
   TimedWord,
 } from '@ccc/contracts';
-import { type MetricTurn, computeMetrics } from '@ccc/core';
+import { type MetricTurn, computeMetrics, costBreakdown, roundUsd } from '@ccc/core';
 import { type SQL, and, asc, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Db } from '../db/client.ts';
 import { LOCAL_USER_ID, calls, events, reviews, scenarios, turns } from '../db/schema.ts';
 
-/** A stored call's cost for the live lanes: the sum of what could be priced. */
+/** A stored call's cost during the call (Claude's live lanes, Deepgram, Cartesia): what could be priced. */
 function liveCost(usage: CallLog['usage']): number | null {
-  const priced = Object.values(usage).flatMap((lane) =>
-    lane?.costUsd === null || lane === undefined ? [] : [lane.costUsd],
+  const priced = Object.values(usage).flatMap((line) =>
+    line?.costUsd === null || line === undefined ? [] : [line.costUsd],
   );
-  return priced.length ? priced.reduce((a, b) => a + b, 0) : null;
+  return priced.length ? roundUsd(priced.reduce((a, b) => a + b, 0)) : null;
 }
 
 /**
@@ -111,9 +111,17 @@ const summaryColumns = {
   prospectName: sql<string>`${scenarios.spec} -> 'prospect' ->> 'name'`,
   reviewStatus: reviews.status,
   overallScore: sql<number | null>`(${reviews.result} ->> 'overallScore')::int`,
+  liveCostUsd: calls.costUsd,
+  reviewCostUsd: reviews.costUsd,
 };
 
-const toSummary = (row: SummaryRow): CallSummary => ({
+/** Everything priced so far: the call's providers plus its review. Null before either. */
+function totalCost(row: Pick<SummaryRow, 'liveCostUsd' | 'reviewCostUsd'>): number | null {
+  if (row.liveCostUsd === null && row.reviewCostUsd === null) return null;
+  return roundUsd((row.liveCostUsd ?? 0) + (row.reviewCostUsd ?? 0));
+}
+
+const toSummary = (row: SummaryRow, warnAboveUsd: number): CallSummary => ({
   id: row.id,
   startedAt: row.startedAt.toISOString(),
   mode: row.mode,
@@ -129,6 +137,8 @@ const toSummary = (row: SummaryRow): CallSummary => ({
   },
   overallScore: row.overallScore,
   reviewStatus: row.reviewStatus,
+  costUsd: totalCost(row),
+  overBudget: (totalCost(row) ?? 0) > warnAboveUsd,
 });
 
 /** The local user's calls matching `where`, newest first, with scenario and review summaries. */
@@ -149,14 +159,21 @@ function selectSummaries(db: Db, where: SQL, limit: number) {
 type SummaryRow = Awaited<ReturnType<typeof selectSummaries>>[number];
 
 /** The local user's calls, newest first. */
-export async function listCalls(db: Db, limit = 100): Promise<CallSummary[]> {
+export async function listCalls(db: Db, warnAboveUsd: number, limit = 100): Promise<CallSummary[]> {
   const rows = await selectSummaries(db, sql`true`, limit);
-  return rows.map(toSummary);
+  return rows.map((row) => toSummary(row, warnAboveUsd));
 }
 
-export async function getCallDetail(db: Db, callId: string): Promise<CallDetail | undefined> {
+const StoredUsage = CallLog.shape.usage;
+
+export async function getCallDetail(
+  db: Db,
+  callId: string,
+  warnAboveUsd: number,
+): Promise<CallDetail | undefined> {
   const [row] = await selectSummaries(db, eq(calls.id, callId), 1);
   if (!row) return undefined;
+  const [stored] = await db.select({ usage: calls.usage }).from(calls).where(eq(calls.id, callId));
 
   const turnRows = await db
     .select()
@@ -182,7 +199,7 @@ export async function getCallDetail(db: Db, callId: string): Promise<CallDetail 
   }
 
   return {
-    call: toSummary(row),
+    call: toSummary(row, warnAboveUsd),
     outcomeReason: row.outcomeReason,
     turns: turnRows.map((t) => ({
       idx: t.idx,
@@ -199,5 +216,14 @@ export async function getCallDetail(db: Db, callId: string): Promise<CallDetail 
         ? computeMetrics(await metricTurns(db, callId), row.durationMs ?? 0)
         : null,
     review,
+    // Priced when the work was done; this only adds it up.
+    cost:
+      row.status === 'ended'
+        ? costBreakdown(
+            StoredUsage.safeParse(stored?.usage).data ?? null,
+            reviewRow ? { model: reviewRow.model, costUsd: reviewRow.costUsd } : null,
+            warnAboveUsd,
+          )
+        : null,
   };
 }

@@ -24,6 +24,37 @@ describe.skipIf(!hasDb)('GET /api/health (real Postgres)', () => {
     expect(body.ok).toBe(true);
     expect(body.db.ok).toBe(true);
     expect(body.db.latencyMs).toBeGreaterThanOrEqual(0);
+    // Nothing configured: the page can say what to add before anyone dials.
+    expect(body.features).toEqual({
+      calls: {
+        ok: false,
+        reason: 'Calls are off: set LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET on the API.',
+      },
+      reviews: { ok: false, reason: 'Reviews are off: set ANTHROPIC_API_KEY on the API.' },
+    });
+    await app.close();
+  });
+
+  it('reports calls and reviews on once their settings are there', async () => {
+    const app = await buildApp(
+      {
+        config: loadConfig({
+          DATABASE_URL: testDatabaseUrl,
+          LIVEKIT_URL: 'wss://x.livekit.cloud',
+          LIVEKIT_API_KEY: 'k',
+          LIVEKIT_API_SECRET: 's',
+          ANTHROPIC_API_KEY: 'sk-test',
+        }),
+        pool,
+        db,
+        catalog: testCatalog,
+      },
+      { webDistDir: noWeb },
+    );
+    const body = HealthResponse.parse(
+      (await app.inject({ method: 'GET', url: '/api/health' })).json(),
+    );
+    expect(body.features).toEqual({ calls: { ok: true }, reviews: { ok: true } });
     await app.close();
   });
 });

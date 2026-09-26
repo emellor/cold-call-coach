@@ -1,6 +1,6 @@
 // Short-lived cards on the call page: the coach's tip (fades after 8 s), the
 // rep's hint, and a notice about the last control.
-import type { CoachTipPayload } from '@ccc/contracts';
+import type { CallNoticePayload, CoachTipPayload } from '@ccc/contracts';
 import { useEffect, useState } from 'react';
 import type { HintView, Notice } from './useCall.ts';
 
@@ -88,5 +88,40 @@ export function HintCard({ hint, onClose }: { hint: HintView; onClose: () => voi
         </ol>
       )}
     </section>
+  );
+}
+
+const NOTICE_TONE: Record<CallNoticePayload['level'], string> = {
+  info: 'border-sky-700 bg-sky-950/60 text-sky-100',
+  warn: 'border-amber-500/70 bg-amber-950/60 text-amber-100',
+  error: 'border-rose-500/70 bg-rose-950/60 text-rose-100',
+};
+
+/** The agent's notices: a provider failing mid-call, the cost warning. They stay until closed. */
+export function AgentNotices(props: {
+  notices: readonly CallNoticePayload[];
+  onDismiss: (code: CallNoticePayload['code']) => void;
+}) {
+  if (!props.notices.length) return null;
+  return (
+    <ul aria-label="Call notices" className="flex flex-col gap-2">
+      {props.notices.map((notice) => (
+        <li
+          key={notice.code}
+          className={`flex items-start justify-between gap-3 rounded-lg border px-4 py-2.5 text-sm ${NOTICE_TONE[notice.level]}`}
+        >
+          {/* The live role sits on the message: on the <li> it would replace listitem. */}
+          <span role={notice.level === 'info' ? 'status' : 'alert'}>{notice.message}</span>
+          <button
+            type="button"
+            onClick={() => props.onDismiss(notice.code)}
+            aria-label="Dismiss"
+            className="rounded px-1.5 opacity-70 hover:opacity-100 focus-visible:outline-2 focus-visible:outline-sky-400"
+          >
+            ×
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }

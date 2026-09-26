@@ -1,6 +1,13 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { HintCard, NOTICE_VISIBLE_MS, NoticeLine, TIP_VISIBLE_MS, TipCard } from './cards.tsx';
+import {
+  AgentNotices,
+  HintCard,
+  NOTICE_VISIBLE_MS,
+  NoticeLine,
+  TIP_VISIBLE_MS,
+  TipCard,
+} from './cards.tsx';
 
 const tip = (id: string, text: string) => ({ id, turn: 2, severity: 'warn' as const, text });
 
@@ -79,5 +86,33 @@ describe('HintCard', () => {
       />,
     );
     expect(screen.getByRole('alert')).toHaveTextContent('The hint took too long.');
+  });
+});
+
+describe('AgentNotices', () => {
+  it('shows each notice with its level, and dismisses by kind', () => {
+    const onDismiss = vi.fn();
+    render(
+      <AgentNotices
+        notices={[
+          { level: 'error', code: 'stt', message: 'Hearing you (Deepgram) failed.' },
+          { level: 'warn', code: 'cost', message: 'This call has cost $2.10 so far.' },
+        ]}
+        onDismiss={onDismiss}
+      />,
+    );
+    const list = screen.getByRole('list', { name: 'Call notices' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.getAllByRole('alert').map((n) => n.textContent)).toEqual([
+      'Hearing you (Deepgram) failed.',
+      'This call has cost $2.10 so far.',
+    ]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Dismiss' })[1]!);
+    expect(onDismiss).toHaveBeenCalledWith('cost');
+  });
+
+  it('renders nothing without notices', () => {
+    const { container } = render(<AgentNotices notices={[]} onDismiss={() => {}} />);
+    expect(container).toBeEmptyDOMElement();
   });
 });

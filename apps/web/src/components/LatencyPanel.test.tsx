@@ -19,6 +19,15 @@ describe('LatencyPanel', () => {
     expect(screen.getByText(/turn 2 · 3 replies/)).toBeInTheDocument();
   });
 
+  it('counts a single reply in the singular', () => {
+    render(
+      <LatencyPanel
+        entries={[{ turn: 0, endOfTurnMs: null, llmTtftMs: null, ttsTtfbMs: 200, e2eMs: null }]}
+      />,
+    );
+    expect(screen.getByText('turn 0 · 1 reply')).toBeInTheDocument();
+  });
+
   it('shows dashes before any reply', () => {
     render(<LatencyPanel entries={[]} />);
     expect(screen.getByText('no replies yet')).toBeInTheDocument();

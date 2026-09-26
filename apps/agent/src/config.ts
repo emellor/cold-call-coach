@@ -50,6 +50,8 @@ const CallConfig = z.object({
    * model, which the plugin now recommends; no download needed.
    */
   TURN_DETECTOR: blankAsUnset(z.enum(['multilingual', 'audio']).default('multilingual')),
+  /** Where call logs wait when the API can't be reached (default: the OS temp dir). */
+  AGENT_SPOOL_DIR: blankAsUnset(z.string().min(1).optional()),
 });
 export type CallConfig = z.infer<typeof CallConfig>;
 
@@ -76,9 +78,19 @@ function read<T>(schema: z.ZodType<T>, env: NodeJS.ProcessEnv): ConfigResult<T> 
   };
 }
 
+/**
+ * On Render (render.yaml) the worker is handed the API's private `host:port`, and a
+ * Blueprint can't build a URL from it, so this does when API_BASE_URL is unset.
+ */
+function withApiBaseUrl(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const hostport = env.API_HOSTPORT?.trim();
+  if (env.API_BASE_URL || !hostport) return env;
+  return { ...env, API_BASE_URL: `http://${hostport}` };
+}
+
 export const readWorkerConfig = (env: NodeJS.ProcessEnv) => read(WorkerConfig, env);
 
 /** The selected turn detector; an invalid value falls back to the default here and fails the call later. */
 export const turnDetectorKind = (env: NodeJS.ProcessEnv): CallConfig['TURN_DETECTOR'] =>
   CallConfig.shape.TURN_DETECTOR.safeParse(env.TURN_DETECTOR).data ?? 'multilingual';
-export const readCallConfig = (env: NodeJS.ProcessEnv) => read(CallConfig, env);
+export const readCallConfig = (env: NodeJS.ProcessEnv) => read(CallConfig, withApiBaseUrl(env));

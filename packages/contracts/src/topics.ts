@@ -74,6 +74,18 @@ export const CoachTipPayload = z.object({
 });
 export type CoachTipPayload = z.infer<typeof CoachTipPayload>;
 
+/**
+ * Something the rep should know mid-call that isn't her talking: a provider
+ * failing, the cost passing the warning line. A newer notice with the same
+ * code replaces the older one.
+ */
+export const CallNoticePayload = z.object({
+  level: z.enum(['info', 'warn', 'error']),
+  code: z.enum(['cost', 'claude', 'stt', 'tts', 'agent']),
+  message: z.string().min(1),
+});
+export type CallNoticePayload = z.infer<typeof CallNoticePayload>;
+
 export interface Topic<S extends z.ZodType> {
   readonly name: string;
   readonly schema: S;
@@ -88,6 +100,7 @@ export const Topics = {
   coachStage: topic('coach.stage', CoachStagePayload),
   coachMetrics: topic('coach.metrics', CoachMetricsPayload),
   coachTip: topic('coach.tip', CoachTipPayload),
+  callNotice: topic('call.notice', CallNoticePayload),
 } as const;
 
 /** LiveKit's built-in transcription topic, read on the web with `useTranscriptions`. */

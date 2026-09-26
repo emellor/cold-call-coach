@@ -2,7 +2,7 @@ import { CallLog, CallLogResponse, type ReviewStatus } from '@ccc/contracts';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { AppDeps } from '../app.ts';
+import type { AppContext } from '../app.ts';
 import { saveCallLog } from '../calls/store.ts';
 import { reviews } from '../db/schema.ts';
 import { requireInternalSecret } from '../internal.ts';
@@ -15,7 +15,7 @@ const SETTLED: readonly ReviewStatus[] = ['pending', 'running', 'ready', 'skippe
 
 export function registerCallLogRoutes(
   app: FastifyInstance,
-  { config, db }: AppDeps,
+  { config, db }: AppContext,
   queue: ReviewQueue,
 ): void {
   // The agent posts the whole log when the call ends, for any reason. It is

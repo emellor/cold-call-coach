@@ -1,0 +1,115 @@
+# Render Blueprint: the API and SPA as one web service, the voice agent as a
+# background worker, and Postgres. LiveKit Cloud stays as it is. README.md,
+# "Deploy to Render", walks through it.
+#
+# `sync: false` marks a secret: Render asks for it when the Blueprint is first
+# created and never reads it from this file. All three resources share a region,
+# because the worker reaches the API, and the API reaches the database, over
+# Render's private network. Frankfurt is Render's nearest region to UK callers.
+
+services:
+  - type: web
+    name: cold-call-coach
+    runtime: node
+    plan: starter
+    region: frankfurt
+    # `corepack pnpm` runs the pnpm pinned in package.json (packageManager),
+    # with no global install. The avatar is fetched before the build so that
+    # Vite copies it into the SPA.
+    buildCommand: >-
+      corepack pnpm install --frozen-lockfile &&
+      node scripts/fetch-avatar.mjs &&
+      corepack pnpm --filter @ccc/web build
+    preDeployCommand: node apps/api/src/db/migrate.ts
+    startCommand: node apps/api/src/server.ts
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: '22'
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cold-call-coach-db
+          property: connectionString
+      # The agent sends it on /internal calls, and it signs the sign-in cookie.
+      - key: INTERNAL_API_SECRET
+        generateValue: true
+      # The one sign-in password (8 characters or more). The API won't start without it.
+      - key: APP_PASSWORD
+        sync: false
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+      # The post-call review.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: REVIEW_MODEL
+        value: claude-opus-5
+      - key: REVIEW_EFFORT
+        value: high
+
+  - type: worker
+    name: cold-call-coach-agent
+    runtime: node
+    # Workers have no free plan. In production LiveKit keeps up to four job
+    # processes warm beside the turn detector's inference process: about 1.3 GB
+    # at rest, measured, against starter's 512 MB.
+    plan: standard
+    region: frankfurt
+    buildCommand: corepack pnpm install --frozen-lockfile --prod
+    startCommand: node apps/agent/src/main.ts start
+    envVars:
+      - key: NODE_VERSION
+        value: '22'
+      - key: NODE_ENV
+        value: production
+      # The API's private host:port; the agent builds http://host:port from it.
+      - key: API_HOSTPORT
+        fromService:
+          type: web
+          name: cold-call-coach
+          property: hostport
+      - key: INTERNAL_API_SECRET
+        fromService:
+          type: web
+          name: cold-call-coach
+          envVarKey: INTERNAL_API_SECRET
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: CARTESIA_API_KEY
+        sync: false
+      # The voice for any scenario whose voice.voiceId is still the placeholder.
+      - key: CARTESIA_VOICE_ID
+        sync: false
+      # The audio model is compiled into the package. The text model is fetched
+      # into ~/.cache at build time, and a worker can't count on finding it there.
+      - key: TURN_DETECTOR
+        value: audio
+      - key: PROSPECT_MODEL
+        value: claude-opus-5
+      - key: PROSPECT_EFFORT
+        value: low
+      - key: COACH_MODEL
+        value: claude-opus-5
+      - key: COACH_EFFORT
+        value: low
+
+databases:
+  - name: cold-call-coach-db
+    databaseName: coach
+    user: coach
+    plan: basic-256mb
+    region: frankfurt
+    postgresMajorVersion: '16'

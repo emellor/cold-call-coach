@@ -1,4 +1,5 @@
 import { Link, useRoute } from 'wouter';
+import { useAuth } from '../lib/auth.ts';
 import { SystemStatus } from './SystemStatus.tsx';
 
 function NavLink({ href, label }: { href: string; label: string }) {
@@ -18,6 +19,7 @@ function NavLink({ href, label }: { href: string; label: string }) {
 
 /** The bar across every page: the name, where you can go, and whether the API is up. */
 export function AppHeader() {
+  const { required, signOut } = useAuth();
   return (
     <header className="flex items-center justify-between gap-4 border-b border-slate-800 px-6 py-3">
       <div className="flex items-center gap-6">
@@ -27,7 +29,18 @@ export function AppHeader() {
           <NavLink href="/calls" label="History" />
         </nav>
       </div>
-      <SystemStatus />
+      <div className="flex items-center gap-4">
+        <SystemStatus />
+        {required && (
+          <button
+            type="button"
+            onClick={signOut}
+            className="rounded-md px-2 py-1 text-sm text-slate-400 hover:text-slate-200 focus-visible:outline-2 focus-visible:outline-sky-400"
+          >
+            Sign out
+          </button>
+        )}
+      </div>
     </header>
   );
 }

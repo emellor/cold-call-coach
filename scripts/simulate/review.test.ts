@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { BetaRawMessageStreamEvent } from '../../apps/agent/src/claude/client.ts';
 import type { StreamingMessages } from '../../apps/api/src/review/reviewer.ts';
 import type { SimResult } from './harness.ts';
+import { readPriceTable } from '../../apps/api/src/prices.ts';
 import { reviewSimulatedCall, timedTurns } from './review.ts';
 
 const load = (path: string): unknown =>
@@ -93,6 +94,7 @@ describe('reviewSimulatedCall', () => {
       messages: messages,
       model: 'claude-opus-5',
       effort: 'high',
+      prices: await readPriceTable(),
       scenario,
       product,
       rubric,

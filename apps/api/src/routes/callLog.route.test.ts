@@ -158,6 +158,48 @@ describe.skipIf(!hasDb)('the call log and its review (real Postgres)', () => {
     expect(row?.costUsd).toBeCloseTo(0.031);
   });
 
+  it('adds up what a call cost, its review included, and flags one over the warning line', async () => {
+    const { reviewer } = stubReviewer(); // prices the review at $0.0625
+    const app = await appWith(reviewer);
+    const cheap = await newCall();
+    const dear = await newCall();
+    const log = sampleLog();
+    const speech = {
+      stt: { model: 'nova-3', audioMs: 540_000, costUsd: 0.0693 },
+      tts: { model: 'sonic-3', characters: 2_150, costUsd: 0.1075 },
+    };
+    await post(app, cheap, { ...log, usage: { ...log.usage, ...speech } });
+    await post(app, dear, {
+      ...log,
+      usage: { ...log.usage, prospect: { ...log.usage.prospect!, costUsd: 2.5 } },
+    });
+    await app.reviewQueue.idle();
+
+    const detailed = await detail(app, cheap);
+    expect(detailed.cost).toMatchObject({
+      totalUsd: 0.2663, // 0.01 + 0.017 + 0.0625 + 0.0693 + 0.1075
+      incomplete: false,
+      overBudget: false,
+      warnAboveUsd: 2,
+    });
+    expect(detailed.cost?.lines.map((l) => [l.key, l.usd])).toEqual([
+      ['prospect', 0.01],
+      ['judge', 0.017],
+      ['review', 0.0625],
+      ['stt', 0.0693],
+      ['tts', 0.1075],
+    ]);
+    expect(detailed.call).toMatchObject({ costUsd: 0.2663, overBudget: false });
+
+    const list = CallListResponse.parse(
+      (await app.inject({ method: 'GET', url: '/api/calls' })).json(),
+    );
+    expect(list.calls.find((c) => c.id === dear)).toMatchObject({
+      costUsd: 2.5795,
+      overBudget: true,
+    });
+  });
+
   it('is idempotent: posting the same log twice leaves the same call and one review', async () => {
     const { reviewer, calls: asked } = stubReviewer();
     const app = await appWith(reviewer);

@@ -17,7 +17,8 @@
     "typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
     "db:migrate": "pnpm --filter @ccc/api db:migrate",
     "avatar:fetch": "node scripts/fetch-avatar.mjs",
-    "simulate": "node scripts/simulate-call.ts"
+    "simulate": "node scripts/simulate-call.ts",
+    "report:latency": "node scripts/latency-report.ts"
   },
   "devDependencies": {
     "@ccc/contracts": "workspace:*",

@@ -50,9 +50,17 @@ describe('CallsPage', () => {
     expect(within(row).getByText('She hung up')).toBeInTheDocument();
     expect(within(row).getByText('38')).toBeInTheDocument();
     expect(within(row).getByText('1:23')).toBeInTheDocument();
+    expect(within(row).getByText('$0.29')).toBeInTheDocument();
     expect(within(row).getByRole('link')).toHaveAttribute('href', `/calls/${CALL_ID}`);
     expect(within(rows[1]!).getByText('reviewing…')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('Meeting booked')).toBeInTheDocument();
+  });
+
+  it('flags a call that cost more than the warning line', async () => {
+    mockCalls([{ ...callDetail().call, costUsd: 2.31, overBudget: true }]);
+    renderPage();
+    const [, row] = await screen.findAllByRole('row');
+    expect(within(row!).getByText(/\$2\.31/)).toHaveTextContent('⚠ $2.31 (over the warning line)');
   });
 
   it('invites a first call when there are none', async () => {

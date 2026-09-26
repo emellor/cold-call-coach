@@ -1,12 +1,16 @@
 import { CallLog } from '@ccc/contracts';
 import { describe, expect, it } from 'vitest';
+import { readPriceTable } from '../prices.ts';
 import { CallRecorder } from './recorder.ts';
 
 const T0 = Date.parse('2026-09-26T10:00:00.000Z');
+const priced = await readPriceTable();
+if (!priced.ok) throw new Error(priced.problem);
+const { prices } = priced;
 
 function recorderAt() {
   let now = T0 - 3_000; // ringing
-  const recorder = new CallRecorder(() => now);
+  const recorder = new CallRecorder(() => now, prices);
   return {
     recorder,
     at: (msAfterPickUp: number) => {
@@ -119,6 +123,7 @@ describe('CallRecorder', () => {
     expect(log.usage.prospect).toEqual({
       model: 'claude-opus-5',
       calls: 2,
+      cachedCalls: 2,
       inputTokens: 2_000,
       cacheReadInputTokens: 4_000,
       cacheCreationInputTokens: 0,
@@ -164,8 +169,51 @@ describe('CallRecorder', () => {
     };
     recorder.usage('hint', 'claude-opus-5', usage);
     const log = recorder.build({ outcome: 'ended_by_rep', stateAfterRepTurn: () => null });
-    expect(log.usage.hint).toMatchObject({ calls: 1, costUsd: 0.0075 });
+    expect(log.usage.hint).toMatchObject({ calls: 1, cachedCalls: 0, costUsd: 0.0075 });
     expect(log.usage).not.toHaveProperty('judge');
+  });
+
+  it('counts the calls that read from the prompt cache', () => {
+    const { recorder } = recorderAt();
+    const turn = (cacheReadInputTokens: number) => ({
+      inputTokens: 50,
+      cacheReadInputTokens,
+      cacheCreationInputTokens: cacheReadInputTokens ? 0 : 1_800,
+      outputTokens: 30,
+    });
+    recorder.usage('prospect', 'claude-opus-5', turn(0)); // turn 1 writes the cache
+    recorder.usage('prospect', 'claude-opus-5', turn(1_800));
+    recorder.usage('prospect', 'claude-opus-5', turn(1_900));
+    const log = recorder.build({ outcome: 'ended_by_rep', stateAfterRepTurn: () => null });
+    expect(log.usage.prospect).toMatchObject({ calls: 3, cachedCalls: 2 });
+  });
+
+  it('adds up Deepgram audio and Cartesia characters, priced from the table', () => {
+    const { recorder } = recorderAt();
+    recorder.stt('nova-3', 300_000);
+    recorder.stt('nova-3', 240_000);
+    recorder.tts('sonic-3', 1_200);
+    recorder.tts('sonic-3', 950);
+    const log = recorder.build({ outcome: 'ended_by_rep', stateAfterRepTurn: () => null });
+    expect(log.usage.stt).toEqual({ model: 'nova-3', audioMs: 540_000, costUsd: 0.0693 }); // 9 min
+    expect(log.usage.tts).toEqual({ model: 'sonic-3', characters: 2_150, costUsd: 0.1075 });
+    expect(recorder.costSoFar()).toBe(0.1768);
+    expect(CallLog.safeParse(log).success).toBe(true);
+  });
+
+  it('prices nothing without a price table, and still logs the usage', () => {
+    const recorder = new CallRecorder(() => T0, null);
+    recorder.usage('prospect', 'claude-opus-5', {
+      inputTokens: 10,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      outputTokens: 10,
+    });
+    recorder.stt('nova-3', 60_000);
+    const log = recorder.build({ outcome: 'ended_by_rep', stateAfterRepTurn: () => null });
+    expect(log.usage.prospect?.costUsd).toBeNull();
+    expect(log.usage.stt).toEqual({ model: 'nova-3', audioMs: 60_000, costUsd: null });
+    expect(recorder.costSoFar()).toBe(0);
   });
 
   describe('rewind', () => {

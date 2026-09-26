@@ -37,7 +37,7 @@ function post(responses: Array<number | Error>) {
 describe('postCallLog', () => {
   it('posts the log with the shared secret', async () => {
     const { result, fetchImpl } = post([200]);
-    expect(await result).toBe(true);
+    expect(await result).toBe('posted');
     const [url, init] = fetchImpl.mock.calls[0]!;
     expect(url).toBe('http://api.test/internal/calls/c1/log');
     expect(init?.method).toBe('POST');
@@ -47,20 +47,20 @@ describe('postCallLog', () => {
 
   it('retries a network failure and a 5xx, backing off, until it lands', async () => {
     const { result, fetchImpl, sleep } = post([new TypeError('fetch failed'), 503, 200]);
-    expect(await result).toBe(true);
+    expect(await result).toBe('posted');
     expect(fetchImpl).toHaveBeenCalledTimes(3);
     expect(sleep.mock.calls).toEqual([[1_000], [2_000]]);
   });
 
   it('does not retry an answer that says the log itself is wrong', async () => {
     const { result, fetchImpl } = post([400]);
-    expect(await result).toBe(false);
+    expect(await result).toBe('rejected');
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('gives up after four attempts without throwing', async () => {
     const { result, fetchImpl } = post([500, 500, 500, 500, 200]);
-    expect(await result).toBe(false);
+    expect(await result).toBe('unreachable');
     expect(fetchImpl).toHaveBeenCalledTimes(4);
   });
 });

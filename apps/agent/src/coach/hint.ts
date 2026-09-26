@@ -1,10 +1,10 @@
 // The Hint button (PLAN.md §8.3): one quick structured-output Claude call for
 // three lines the rep could say next, on the coach's model. It runs on the
 // RPC path, never the prospect's: she keeps talking while it thinks.
-import { APIError, APIUserAbortError } from '@anthropic-ai/sdk';
 import type { HintDraft } from '@ccc/contracts';
 import { type Effort, type TokenUsage, hintSuggestions } from '@ccc/core';
 import { hintRequest } from '../claude/requests.ts';
+import { CLAUDE_TIMED_OUT, CLAUDE_UNREACHABLE, describeClaudeFailure } from '../failures.ts';
 import { type ParsingMessages, usageOf } from '../judge/judge.ts';
 
 /** PLAN.md's target is about 2 s; past this the rep has moved on. */
@@ -26,20 +26,10 @@ export type HintSource = (prompt: {
 /** What a failed hint tells the rep. */
 export function describeHintError(error: unknown): string {
   if (error instanceof HintError) return error.message;
-  if (
-    error instanceof APIUserAbortError ||
-    (error instanceof Error && error.name === 'TimeoutError')
-  ) {
-    return 'The hint took too long. Try again.';
-  }
-  if (error instanceof APIError) {
-    if (error.status === 401 || error.status === 403) {
-      return "Claude rejected the agent's key: check ANTHROPIC_API_KEY.";
-    }
-    if (error.status === 429) return 'Claude is rate-limiting hints. Try again in a moment.';
-    if (error.status === 529 || error.status === 503) return 'Claude is overloaded. Try again.';
-  }
-  return "Couldn't get a hint. Try again.";
+  const failure = describeClaudeFailure(error);
+  if (failure === CLAUDE_TIMED_OUT) return 'The hint took too long. Try again.';
+  if (failure === CLAUDE_UNREACHABLE) return "Couldn't get a hint. Try again.";
+  return failure;
 }
 
 export function claudeHints(options: {

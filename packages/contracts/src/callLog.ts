@@ -48,6 +48,8 @@ export const EventKind = z.enum([
   'resume',
   'hint',
   'rewind',
+  // A call.notice the rep was shown (M6): a provider failing, the cost warning.
+  'notice',
 ]);
 export type EventKind = z.infer<typeof EventKind>;
 
@@ -85,15 +87,35 @@ export type RewindEventPayload = z.infer<typeof RewindEventPayload>;
 export const LaneUsage = z.object({
   /** The model that served the calls (a fallback may differ from the one requested). */
   model: z.string(),
+  /** The effort the lane asked for (from .env), so reports can compare settings. */
+  effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
   calls: z.int().nonnegative(),
   inputTokens: z.int().nonnegative(),
   cacheReadInputTokens: z.int().nonnegative(),
   cacheCreationInputTokens: z.int().nonnegative(),
   outputTokens: z.int().nonnegative(),
+  /** Calls that read from the prompt cache: from turn 2 on, every one should (M6). */
+  cachedCalls: z.int().nonnegative().optional(),
   /** Null for a model the price table doesn't know. */
   costUsd: z.number().nonnegative().nullable(),
 });
 export type LaneUsage = z.infer<typeof LaneUsage>;
+
+/** Deepgram: the audio streamed for transcription, from LiveKit's STT metrics. */
+export const SttUsage = z.object({
+  model: z.string(),
+  audioMs: z.number().nonnegative(),
+  costUsd: z.number().nonnegative().nullable(),
+});
+export type SttUsage = z.infer<typeof SttUsage>;
+
+/** Cartesia: the characters she spoke, from LiveKit's TTS metrics. */
+export const TtsUsage = z.object({
+  model: z.string(),
+  characters: z.int().nonnegative(),
+  costUsd: z.number().nonnegative().nullable(),
+});
+export type TtsUsage = z.infer<typeof TtsUsage>;
 
 export const CallLog = z.object({
   outcome: CallOutcome,
@@ -113,6 +135,8 @@ export const CallLog = z.object({
     judge: LaneUsage.optional(),
     /** The rep's hint requests (coached calls). */
     hint: LaneUsage.optional(),
+    stt: SttUsage.optional(),
+    tts: TtsUsage.optional(),
   }),
 });
 export type CallLog = z.infer<typeof CallLog>;

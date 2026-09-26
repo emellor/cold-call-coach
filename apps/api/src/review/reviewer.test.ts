@@ -5,6 +5,7 @@ import type {
 } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import { ScenarioSpec } from '@ccc/contracts';
 import { describe, expect, it } from 'vitest';
+import { readPriceTable } from '../prices.ts';
 import { testCatalog } from '../test/catalog.ts';
 import { sampleDraft } from '../test/callLog.ts';
 import {
@@ -16,6 +17,7 @@ import {
   reviewRequest,
 } from './reviewer.ts';
 
+const prices = await readPriceTable();
 const scenario = ScenarioSpec.parse(
   testCatalog.scenarios.find((s) => s.id === 'medium-finance-director'),
 );
@@ -112,13 +114,16 @@ describe('reviewRequest', () => {
 
 describe('claudeReviewer', () => {
   const reviewer = (answer: Parameters<typeof fakeStream>[0]) =>
-    claudeReviewer({ ...fakeStream(answer), model: 'claude-opus-5', effort: 'high' });
+    claudeReviewer({ ...fakeStream(answer), model: 'claude-opus-5', effort: 'high', prices });
 
   it('streams the review, then returns the parsed draft, the answering model and its cost', async () => {
     const { messages, sent } = fakeStream({ text: JSON.stringify(sampleDraft) });
-    const outcome = await claudeReviewer({ messages, model: 'claude-opus-5', effort: 'high' })(
-      input,
-    );
+    const outcome = await claudeReviewer({
+      messages,
+      model: 'claude-opus-5',
+      effort: 'high',
+      prices,
+    })(input);
     expect(sent[0]?.stream).toBe(true);
     expect(outcome.draft).toEqual(sampleDraft);
     expect(outcome.model).toBe('claude-opus-5');
@@ -157,7 +162,7 @@ describe('describeClaudeError', () => {
 
   it('is what a failed review reports', async () => {
     const messages: StreamingMessages = { create: () => Promise.reject(apiError(401)) };
-    const reviewer = claudeReviewer({ messages, model: 'claude-opus-5', effort: 'high' });
+    const reviewer = claudeReviewer({ messages, model: 'claude-opus-5', effort: 'high', prices });
     await expect(reviewer(input)).rejects.toThrow('check ANTHROPIC_API_KEY');
   });
 });

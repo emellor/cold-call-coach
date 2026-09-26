@@ -1,5 +1,6 @@
 import {
   type CallMode,
+  type CallNoticePayload,
   type CallOutcome,
   type CoachMetricsPayload,
   type CoachTipPayload,
@@ -75,6 +76,10 @@ export interface CallView {
   busy?: 'pause' | 'resume' | 'rewind';
   hint?: HintView;
   notice?: Notice;
+  /** The agent's notices (a provider failing, the cost warning), the latest of each kind. */
+  agentNotices: CallNoticePayload[];
+  /** LiveKit lost the connection and is getting it back; the call goes on if it does. */
+  reconnecting: boolean;
 }
 
 /** Hang up if nobody answers: usually the agent worker isn't running. */
@@ -91,6 +96,8 @@ const idleView = (): CallView => ({
   latency: [],
   coach: { stages: NO_STAGES },
   paused: false,
+  agentNotices: [],
+  reconnecting: false,
 });
 
 /** Where to go once the call is over: its review, if she ever picked up. */
@@ -188,7 +195,13 @@ export function useCall() {
       roomRef.current = null;
       setView((v) => {
         if (v.phase === 'ended' || v.phase === 'idle') return v;
-        const ended = { ...v, phase: 'ended' as const, paused: false, busy: undefined };
+        const ended = {
+          ...v,
+          phase: 'ended' as const,
+          paused: false,
+          busy: undefined,
+          reconnecting: false,
+        };
         // As on the agent: a booked meeting is the outcome however the call ends,
         // including when the rep hangs up first and misses the agent's last word.
         if (v.meeting !== undefined) {
@@ -254,9 +267,18 @@ export function useCall() {
       onTopic(room, Topics.coachTip, (tip) => {
         setView((v) => ({ ...v, coach: { ...v.coach, tip } }));
       });
+      onTopic(room, Topics.callNotice, (notice) => {
+        setView((v) => ({
+          ...v,
+          agentNotices: [...v.agentNotices.filter((n) => n.code !== notice.code), notice],
+        }));
+      });
+      // A dropped connection is retried by LiveKit; the call only ends if that fails.
+      room.on(RoomEvent.Reconnecting, () => setView((v) => ({ ...v, reconnecting: true })));
+      room.on(RoomEvent.Reconnected, () => setView((v) => ({ ...v, reconnecting: false })));
       room.on(RoomEvent.Disconnected, (reason) => {
         if (reason !== DisconnectReason.CLIENT_INITIATED) {
-          finish('error', 'The connection dropped.');
+          finish('error', "The connection dropped and couldn't be restored.");
         }
       });
 
@@ -400,8 +422,14 @@ export function useCall() {
 
   const dismissHint = useCallback(() => setView((v) => ({ ...v, hint: undefined })), []);
 
+  const dismissAgentNotice = useCallback(
+    (code: CallNoticePayload['code']) =>
+      setView((v) => ({ ...v, agentNotices: v.agentNotices.filter((n) => n.code !== code) })),
+    [],
+  );
+
   // Leaving the page mid-call hangs up.
   useEffect(() => () => finish('ended_by_rep'), [finish]);
 
-  return { view, dial, hangUp, togglePause, hint, dismissHint, rewind };
+  return { view, dial, hangUp, togglePause, hint, dismissHint, rewind, dismissAgentNotice };
 }

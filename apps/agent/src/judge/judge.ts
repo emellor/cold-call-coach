@@ -36,8 +36,18 @@ export function claudeJudge(options: {
   timeoutMs?: number;
   /** Every answered call's usage, by the model that answered (the call log sums it). */
   onUsage?: (model: string, usage: TokenUsage) => void;
+  /** The request failed (not a refusal): the turn goes unjudged. */
+  onFailure?: (error: unknown) => void;
 }): Judge {
-  const { messages, model, effort, logger, timeoutMs = JUDGE_TIMEOUT_MS, onUsage } = options;
+  const {
+    messages,
+    model,
+    effort,
+    logger,
+    timeoutMs = JUDGE_TIMEOUT_MS,
+    onUsage,
+    onFailure,
+  } = options;
   return async ({ system, user }) => {
     const started = performance.now();
     try {
@@ -69,6 +79,7 @@ export function claudeJudge(options: {
         { lane: 'judge', err: error, ms: Math.round(performance.now() - started) },
         'judge call failed',
       );
+      onFailure?.(error);
       return null;
     }
   };

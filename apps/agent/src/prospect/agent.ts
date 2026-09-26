@@ -67,6 +67,8 @@ export interface ProspectAgentOptions {
   onSttFinal?: (words: SttWord[]) => void;
   /** True while the rep has the call paused: whatever LiveKit hears is not a turn. */
   paused?: () => boolean;
+  /** Her reply failed (she spoke the neutral line instead): the rep should know why. */
+  onReplyFailed?: (error: unknown) => void;
 }
 
 /** Leads the reply with its id in `extra`, which LiveKit copies onto the committed message. */
@@ -140,7 +142,8 @@ export class ProspectAgent extends voice.Agent {
     _toolCtx: llm.ToolContext,
     _modelSettings: voice.ModelSettings,
   ): Promise<ReadableStream<llm.ChatChunk | string>> {
-    const { persona, claude, model, effort, brain, ledger, logger, onUsage } = this.#options;
+    const { persona, claude, model, effort, brain, ledger, logger, onUsage, onReplyFailed } =
+      this.#options;
     const reply = ledger.start(brain.hangUpDue);
     const messages = withStateNote(
       buildProspectMessages(chatContextToTurns(chatCtx)),
@@ -161,11 +164,13 @@ export class ProspectAgent extends voice.Agent {
           { lane: 'prospect', stopDetails: message.stop_details, model: message.model },
           'prospect reply refused; speaking the neutral line',
         ),
-      onError: (error) =>
+      onError: (error) => {
         logger.error(
           { err: error, lane: 'prospect' },
           'prospect reply failed; speaking the neutral line',
-        ),
+        );
+        onReplyFailed?.(error);
+      },
     });
     return Promise.resolve(tagWithReplyId(reply.id, text));
   }

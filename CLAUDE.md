@@ -61,6 +61,7 @@ pnpm test -t "health"       # filter by name
 pnpm --filter @ccc/agent download-files   # fetch the agent's model files (turn detector, VAD)
 pnpm simulate --help        # text-only persona regression; spends Claude tokens, run by hand
 pnpm simulate --persona good --runs 1 --review   # …plus a real post-call review
+pnpm report:latency         # p50/p90 per stage, cache hits and cost over the logged calls
 ```
 
 ## How the code runs
@@ -226,6 +227,69 @@ pnpm simulate --persona good --runs 1 --review   # …plus a real post-call revi
   - Shortcuts ignore typing and modifier keys.
   - Space still presses a focused button rather than pausing.
   - Tips and hints overlay the video, so the controls never move.
+
+## Cost, latency, resilience and sign-in (M6)
+
+- **Cost.**
+  - The price table is `config/prices.json` (`PriceTable`). A dated model id prices as its
+    alias. The API refuses to boot on a bad file, while the agent runs unpriced instead:
+    costs are null and there is no warning.
+  - The agent prices usage as it records it. `CallRecorder` takes Deepgram's audio and
+    Cartesia's characters from LiveKit's `MetricsCollected` (`stt_metrics`, `tts_metrics`).
+    Its `costSoFar()` feeds `CostWatch`, which sends one `call.notice` when the call passes
+    `warnAboveUsd`.
+  - The API adds the review's cost. `core/cost/costBreakdown` builds the lines for
+    `GET /api/calls/:id`, and the list carries `costUsd` and `overBudget`.
+  - Stored costs are never re-priced, so a price change applies to new calls only. The
+    warning line is read at request time.
+- **Latency.**
+  - `core/report/latency.ts` computes percentiles and cache stats.
+  - `pnpm report:latency` (`scripts/latency-report.ts`) reads the calls through
+    `apps/api/src/calls/report.ts`, because the root scripts can't import `drizzle-orm`.
+  - `claude/sentences.test.ts` proves the first sentence reaches the TTS tokenizer while
+    Claude is still streaming.
+- **The log always posts.**
+  - `runCall` registers the shutdown callback before anything else can fail. Until the
+    session exists the callback posts `minimalLog`; after that, the full log.
+  - Set-up errors go through `fail(reason)`.
+  - When the API is unreachable after `postCallLog`'s retries, `LogSpool` writes the log
+    under `AGENT_SPOOL_DIR`. Each new call flushes the spool without waiting.
+  - On the API, `sweepStaleCalls` (at boot, then every 5 min) marks calls that never
+    ended, older than the limit plus 5 min, as failed. A late log still replaces the row.
+- **Notices.** `call.notice` (`CallNoticePayload`) carries:
+  - provider failures, which `failures.ts` words as the env var to check, or unreachable,
+    timed out or rate-limited;
+  - her failed replies;
+  - judge failures, as warnings;
+  - the cost warning.
+
+  `CallNotices` drops a repeat of the same code and message. Every notice sent is also a
+  `notice` event in the log. `GET /api/health` returns `features`, the reason calls or
+  reviews are off, and the web header shows it.
+
+- **Web.**
+  - `useCall` shows **Reconnecting…** between `RoomEvent.Reconnecting` and `Reconnected`.
+  - During a call, any click or key resumes the avatar's audio context.
+- **Sign-in** (`apps/api/src/auth.ts`), only when `APP_PASSWORD` is set.
+  - An `onRequest` hook answers 401 on every `/api/*` route except health and
+    `/api/auth/*`. The `/internal/*` routes keep `x-internal-secret`.
+  - The cookie is `ccc_session` = `<expiry>.<HMAC>`, keyed by `INTERNAL_API_SECRET` and
+    the password.
+  - `LoginLimiter` allows 10 wrong passwords per address per 15 minutes.
+  - In production the API requires `APP_PASSWORD` and a non-development
+    `INTERNAL_API_SECRET`.
+  - The web's `AuthGate` asks `GET /api/auth/session` first. Any other 401 fires
+    `SIGNED_OUT_EVENT`. It fails open when the API can't be reached, and the API still
+    refuses.
+- **Render** (`render.yaml`).
+  - Builds run `corepack pnpm`, which needs no global install (`npm install -g pnpm` is
+    reported to fail on Render with EROFS). Start and pre-deploy commands are plain
+    `node`, so nothing needs pnpm at run time.
+  - The worker installs with `--prod`, runs `TURN_DETECTOR=audio`, and gets the API's
+    private address as `API_HOSTPORT`, from which `readCallConfig` builds
+    `http://host:port` when `API_BASE_URL` is unset.
+  - The commands were run locally in production mode; the Blueprint has never been
+    applied on Render.
 
 ## The avatar (apps/web/src/avatar)
 
