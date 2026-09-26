@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { liveKitPairProblem } from '@ccc/core';
 import { z } from 'zod';
 import { repoRoot } from './paths.ts';
 
@@ -9,18 +10,27 @@ export const DEV_DATABASE_URL = 'postgres://coach:coach@localhost:5432/coach';
 /** `.env.example`'s value, so a fresh checkout works locally. Refused in production. */
 export const DEV_INTERNAL_API_SECRET = 'dev-only-internal-secret';
 
-/** An empty `KEY=` line in .env means unset, not "the empty string". */
-const optional = <S extends z.ZodType>(schema: S) =>
-  z.preprocess((v) => (v === '' ? undefined : v), schema.optional());
+/**
+ * A value pasted into a host's settings loses any space or newline around it,
+ * and an empty `KEY=` line means unset, not "the empty string".
+ */
+const cleaned = (v: unknown) => {
+  const value = typeof v === 'string' ? v.trim() : v;
+  return value === '' ? undefined : value;
+};
+const optional = <S extends z.ZodType>(schema: S) => z.preprocess(cleaned, schema.optional());
 
 const Config = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   HOST: z.string().min(1).default('0.0.0.0'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
-  DATABASE_URL: z
-    .string({ error: 'is required' })
-    .regex(/^postgres(ql)?:\/\//, 'must be a postgres:// connection URL'),
+  DATABASE_URL: z.preprocess(
+    cleaned,
+    z
+      .string({ error: 'is required' })
+      .regex(/^postgres(ql)?:\/\//, 'must be a postgres:// connection URL'),
+  ),
   // Optional at boot so the API and health check run without them; the call
   // routes answer 503 naming what is missing.
   LIVEKIT_URL: optional(z.string().regex(/^wss?:\/\//, 'must be a ws:// or wss:// URL')),
@@ -30,12 +40,9 @@ const Config = z.object({
   INTERNAL_API_SECRET: optional(z.string().min(16, 'must be at least 16 characters')),
   // The post-call review. Without a key, reviews fail with a reason the web shows.
   ANTHROPIC_API_KEY: optional(z.string().min(1)),
-  REVIEW_MODEL: z.preprocess(
-    (v) => (v === '' ? undefined : v),
-    z.string().min(1).default('claude-opus-5'),
-  ),
+  REVIEW_MODEL: z.preprocess(cleaned, z.string().min(1).default('claude-opus-5')),
   REVIEW_EFFORT: z.preprocess(
-    (v) => (v === '' ? undefined : v),
+    cleaned,
     z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('high'),
   ),
   // One password for a deployed app: every /api route then needs its session
@@ -93,12 +100,17 @@ export interface LiveKitConfig {
   apiSecret: string;
 }
 
-/** The LiveKit settings, or the names of the ones that are missing. */
-export function liveKitConfig(config: Config): LiveKitConfig | { missing: string[] } {
+/**
+ * The LiveKit settings, or what stops calls: the settings that are missing, or a
+ * key pair that plainly can't be one. `problem` reads after "Calls are off: ".
+ */
+export function liveKitConfig(config: Config): LiveKitConfig | { problem: string } {
   const { LIVEKIT_URL: url, LIVEKIT_API_KEY: apiKey, LIVEKIT_API_SECRET: apiSecret } = config;
-  if (url && apiKey && apiSecret) return { url, apiKey, apiSecret };
+  if (url && apiKey && apiSecret) {
+    const problem = liveKitPairProblem(apiKey, apiSecret);
+    return problem ? { problem } : { url, apiKey, apiSecret };
+  }
   const settings = { LIVEKIT_URL: url, LIVEKIT_API_KEY: apiKey, LIVEKIT_API_SECRET: apiSecret };
-  return {
-    missing: Object.keys(settings).filter((name) => !settings[name as keyof typeof settings]),
-  };
+  const missing = Object.keys(settings).filter((name) => !settings[name as keyof typeof settings]);
+  return { problem: `set ${missing.join(', ')} on the API.` };
 }

@@ -30,7 +30,7 @@ if (isMain) {
     // Exit 0 so `pnpm dev` keeps the API and web running without LiveKit.
     console.warn(
       [
-        '[agent] LiveKit is not configured, so the prospect agent will not start:',
+        "[agent] LiveKit isn't set up, so the prospect agent will not start:",
         ...result.problems.map((p) => `[agent]   - ${p}`),
         '[agent] Add them to .env (see .env.example) and restart `pnpm dev`.',
       ].join('\n'),

@@ -14,7 +14,13 @@ import {
   type TrackerStage,
   parseTopicMessage,
 } from '@ccc/contracts';
-import { DisconnectReason, Room, RoomEvent } from 'livekit-client';
+import {
+  ConnectionError,
+  ConnectionErrorReason,
+  DisconnectReason,
+  Room,
+  RoomEvent,
+} from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { z } from 'zod';
 import { playHangUpClick } from '../audio/click.ts';
@@ -131,8 +137,21 @@ export function describeOutcome(outcome: CallOutcome, reason?: string): string {
   }
 }
 
+/** LiveKit refused the token the API minted: the API's key pair isn't one LiveKit knows. */
+export const LIVEKIT_REFUSED_TOKEN =
+  "LiveKit refused this call's token, so the API's LIVEKIT_API_KEY and LIVEKIT_API_SECRET " +
+  "aren't a key and secret from the LiveKit project in LIVEKIT_URL.";
+
 export function describeDialError(error: unknown): string {
   if (error instanceof ApiRequestError) return error.message;
+  if (error instanceof ConnectionError) {
+    if (error.reason === ConnectionErrorReason.NotAllowed || error.status === 401) {
+      return LIVEKIT_REFUSED_TOKEN;
+    }
+    if (error.reason === ConnectionErrorReason.ServerUnreachable) {
+      return "Couldn't reach LiveKit. Check your connection, and LIVEKIT_URL on the API.";
+    }
+  }
   if (error instanceof DOMException && error.name === 'NotAllowedError') {
     return 'Microphone access was blocked. Allow it for this site and dial again.';
   }
@@ -276,8 +295,10 @@ export function useCall() {
       // A dropped connection is retried by LiveKit; the call only ends if that fails.
       room.on(RoomEvent.Reconnecting, () => setView((v) => ({ ...v, reconnecting: true })));
       room.on(RoomEvent.Reconnected, () => setView((v) => ({ ...v, reconnecting: false })));
+      // Only a call that got through can drop: LiveKit also reports a failed
+      // connect as a disconnect, and the dial's own error says more about it.
       room.on(RoomEvent.Disconnected, (reason) => {
-        if (reason !== DisconnectReason.CLIENT_INITIATED) {
+        if (reason !== DisconnectReason.CLIENT_INITIATED && liveRef.current) {
           finish('error', "The connection dropped and couldn't be restored.");
         }
       });
@@ -291,7 +312,12 @@ export function useCall() {
         );
         await room.localParticipant.setMicrophoneEnabled(true);
         noAnswerRef.current = window.setTimeout(
-          () => finish('error', 'No answer. Is the agent running? `pnpm dev` starts it.'),
+          () =>
+            finish(
+              'error',
+              'No answer: the voice agent never picked up. Check that it is running and ' +
+                'connected to LiveKit (`pnpm dev` starts it locally).',
+            ),
           NO_ANSWER_MS,
         );
       } catch (error) {

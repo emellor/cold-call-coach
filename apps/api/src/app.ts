@@ -4,8 +4,14 @@ import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastif
 import type pg from 'pg';
 import { ZodError } from 'zod';
 import { registerAuth } from './auth.ts';
-import type { Config } from './config.ts';
+import { type Config, liveKitConfig } from './config.ts';
 import type { Db } from './db/client.ts';
+import {
+  LIVEKIT_REJECTED,
+  LiveKitCheck,
+  type LiveKitAuthCheck,
+  roomServiceProbe,
+} from './livekitCheck.ts';
 import { webDistDir } from './paths.ts';
 import { readPriceTable } from './prices.ts';
 import { ReviewQueue } from './review/queue.ts';
@@ -29,10 +35,15 @@ export interface AppDeps {
   reviewer?: Reviewer | null;
   /** Omitted: read from config/prices.json. */
   prices?: PriceTable;
+  /**
+   * Whether LiveKit accepts the key pair, for the health check. Omitted: asks
+   * LiveKit itself when it's configured. Tests pass a stub, or null.
+   */
+  livekitCheck?: LiveKitAuthCheck | null;
 }
 
 /** What the routes get: the deps with the price table resolved. */
-export type AppContext = Omit<AppDeps, 'prices'> & { prices: PriceTable };
+export type AppContext = Omit<AppDeps, 'prices' | 'livekitCheck'> & { prices: PriceTable };
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -47,6 +58,14 @@ function defaultReviewer(config: Config, prices: PriceTable): Reviewer | null {
     model: config.REVIEW_MODEL,
     effort: config.REVIEW_EFFORT,
     prices,
+  });
+}
+
+function defaultLiveKitCheck(config: Config, app: FastifyInstance): LiveKitAuthCheck | null {
+  const livekit = liveKitConfig(config);
+  if ('problem' in livekit) return null;
+  return new LiveKitCheck(roomServiceProbe(livekit), {
+    onRejected: () => app.log.error(LIVEKIT_REJECTED),
   });
 }
 
@@ -90,6 +109,8 @@ export async function buildApp(
     pool: deps.pool,
     config: deps.config,
     reviewsEnabled: reviewer !== null,
+    livekit:
+      deps.livekitCheck === undefined ? defaultLiveKitCheck(deps.config, app) : deps.livekitCheck,
   });
   registerScenarioRoutes(app, context);
   registerCallRoutes(app, context, queue);

@@ -1,8 +1,9 @@
 import { HealthResponse } from '@ccc/contracts';
 import { afterAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.ts';
-import { loadConfig } from '../config.ts';
+import { type Config, loadConfig } from '../config.ts';
 import { createDb } from '../db/client.ts';
+import { LIVEKIT_REJECTED, type LiveKitAuth, type LiveKitAuthCheck } from '../livekitCheck.ts';
 import { databaseAvailable, testDatabaseUrl } from '../test/db.ts';
 import { testCatalog } from '../test/catalog.ts';
 
@@ -35,27 +36,50 @@ describe.skipIf(!hasDb)('GET /api/health (real Postgres)', () => {
     await app.close();
   });
 
-  it('reports calls and reviews on once their settings are there', async () => {
+  const configured = (overrides: Record<string, string> = {}) =>
+    loadConfig({
+      DATABASE_URL: testDatabaseUrl,
+      LIVEKIT_URL: 'wss://x.livekit.cloud',
+      LIVEKIT_API_KEY: 'k',
+      LIVEKIT_API_SECRET: 's',
+      ANTHROPIC_API_KEY: 'sk-test',
+      ...overrides,
+    });
+  const verdict = (auth: LiveKitAuth) => ({ auth: () => Promise.resolve(auth) });
+
+  async function featuresWith(config: Config, livekitCheck: LiveKitAuthCheck | null) {
     const app = await buildApp(
-      {
-        config: loadConfig({
-          DATABASE_URL: testDatabaseUrl,
-          LIVEKIT_URL: 'wss://x.livekit.cloud',
-          LIVEKIT_API_KEY: 'k',
-          LIVEKIT_API_SECRET: 's',
-          ANTHROPIC_API_KEY: 'sk-test',
-        }),
-        pool,
-        db,
-        catalog: testCatalog,
-      },
+      { config, pool, db, catalog: testCatalog, livekitCheck },
       { webDistDir: noWeb },
     );
     const body = HealthResponse.parse(
       (await app.inject({ method: 'GET', url: '/api/health' })).json(),
     );
-    expect(body.features).toEqual({ calls: { ok: true }, reviews: { ok: true } });
     await app.close();
+    return body.features;
+  }
+
+  it('reports calls and reviews on once their settings are there', async () => {
+    expect(await featuresWith(configured(), verdict('ok'))).toEqual({
+      calls: { ok: true },
+      reviews: { ok: true },
+    });
+    // LiveKit not answering is no reason to call calls off.
+    expect((await featuresWith(configured(), verdict('unknown')))?.calls).toEqual({ ok: true });
+  });
+
+  it('says calls are off when LiveKit refuses the key pair, before anyone dials', async () => {
+    expect((await featuresWith(configured(), verdict('rejected')))?.calls).toEqual({
+      ok: false,
+      reason: LIVEKIT_REJECTED,
+    });
+  });
+
+  it('says so when the secret is a room token, without asking LiveKit', async () => {
+    const roomToken = 'eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJBUEkifQ.c2ln';
+    const calls = (await featuresWith(configured({ LIVEKIT_API_SECRET: roomToken }), null))?.calls;
+    expect(calls?.ok).toBe(false);
+    expect(calls?.reason).toMatch(/^Calls are off: LIVEKIT_API_SECRET is a room token/);
   });
 });
 

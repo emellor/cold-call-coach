@@ -31,6 +31,36 @@ describe('readWorkerConfig', () => {
     });
     expect(result.ok).toBe(false);
   });
+
+  it('drops the space or newline a pasted value brings with it', () => {
+    const result = readWorkerConfig({
+      LIVEKIT_URL: 'wss://example.livekit.cloud\n',
+      LIVEKIT_API_KEY: ' key',
+      LIVEKIT_API_SECRET: 'secret\n',
+    });
+    expect(result).toEqual({
+      ok: true,
+      config: {
+        LIVEKIT_URL: 'wss://example.livekit.cloud',
+        LIVEKIT_API_KEY: 'key',
+        LIVEKIT_API_SECRET: 'secret',
+      },
+    });
+  });
+
+  it('refuses a room token from "Generate Token" as the secret, in words that say what to do', () => {
+    const result = readWorkerConfig({
+      LIVEKIT_URL: 'wss://example.livekit.cloud',
+      LIVEKIT_API_KEY: 'APIaB3cD4eF5gH6',
+      LIVEKIT_API_SECRET: 'eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJBUEkifQ.c2ln',
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.problems).toEqual([
+        expect.stringMatching(/^LIVEKIT_API_SECRET is a room token .*create a key and copy both/),
+      ]);
+    }
+  });
 });
 
 describe('readCallConfig', () => {
