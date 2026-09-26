@@ -8,7 +8,7 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
-          include: ['{apps,packages,scripts}/**/*.test.ts'],
+          include: ['{apps,packages,scenarios,scripts}/**/*.test.ts'],
           exclude: [...configDefaults.exclude, '**/dist/**'],
           // Brings the test database's schema up to date when one is reachable.
           globalSetup: ['./apps/api/src/test/global-setup.ts'],

@@ -1,0 +1,67 @@
+{
+  "id": "cold-call-v1",
+  "version": 1,
+  "title": "B2B cold call",
+  "criteria": [
+    {
+      "key": "opener",
+      "name": "Opener",
+      "goodLooksLike": "States who you are fast and asks permission; no \"sorry to bother you\"",
+      "anchors": {
+        "1": "Apologetic or rambling start (\"sorry to bother you\"); she has to ask who is calling",
+        "3": "Says who they are and why, but slowly, or without asking for a moment of her time",
+        "5": "Name, company and a permission ask within the first two sentences, brief and confident"
+      }
+    },
+    {
+      "key": "reason",
+      "name": "Reason for call",
+      "goodLooksLike": "A problem she'd recognise for her role; not a company or feature blurb",
+      "anchors": {
+        "1": "A company or feature blurb with nothing about her world",
+        "3": "A generic problem that could apply to anyone",
+        "5": "A specific problem someone in her role would recognise, in her terms, that earns the next minute"
+      }
+    },
+    {
+      "key": "discovery",
+      "name": "Discovery",
+      "goodLooksLike": "Open questions, follow-ups on her answers, uncovers the private facts",
+      "anchors": {
+        "1": "No questions, or only closed and leading ones; talks at her",
+        "3": "Some open questions but little follow-up; uncovers one private fact",
+        "5": "Open questions that build on her answers; uncovers most of the private facts"
+      }
+    },
+    {
+      "key": "objections",
+      "name": "Objections",
+      "goodLooksLike": "Acknowledge → ask → answer → check; no arguing",
+      "anchors": {
+        "1": "Argues with, ignores or talks over her objections",
+        "3": "Acknowledges and answers, but skips the clarifying question or the check",
+        "5": "Acknowledges, asks a clarifying question, answers briefly, checks it landed"
+      }
+    },
+    {
+      "key": "next_step",
+      "name": "Next step",
+      "goodLooksLike": "Asks for a specific day and time and confirms it",
+      "anchors": {
+        "1": "No ask, or a vague \"can I send you some information?\"",
+        "3": "Asks for a meeting but leaves the day or time open",
+        "5": "Proposes a specific day and time, gets a yes, and confirms it back"
+      }
+    },
+    {
+      "key": "delivery",
+      "name": "Delivery",
+      "goodLooksLike": "Pace 130–170 wpm, at most 2 core fillers a minute, no monologue over 45 s, talk ratio 40–60%",
+      "anchors": {
+        "1": "Rushed or halting, frequent fillers, long monologues, dominates the talk time",
+        "3": "Mostly steady, with some fillers or one long monologue",
+        "5": "Steady pace, few fillers, short turns and a balanced share of the talking"
+      }
+    }
+  ]
+}

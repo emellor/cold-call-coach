@@ -1,3 +1,4 @@
+import type { ScenarioSummary } from '@ccc/contracts';
 import { RoomContext, StartAudio, useVoiceAssistant } from '@livekit/components-react';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { AgentAudio } from '../avatar/AgentAudio.tsx';
@@ -10,16 +11,11 @@ import { LatencyPanel } from '../components/LatencyPanel.tsx';
 import { SystemStatus } from '../components/SystemStatus.tsx';
 import { Transcript } from '../components/Transcript.tsx';
 import { formatClock } from '../lib/stats.ts';
-import { usePersistentFlag } from '../lib/usePersistentFlag.ts';
+import { usePersistentFlag, usePersistentString } from '../lib/usePersistentFlag.ts';
+import { ScenarioPicker } from '../scenarios/ScenarioPicker.tsx';
+import { useScenarios } from '../scenarios/useScenarios.ts';
 
-/** M1/M2 have one scenario; M3 adds the picker. */
-const SCENARIO = {
-  id: 'medium-finance-director',
-  title: 'Busy finance director',
-  prospect: 'Claire Hughes',
-  firstName: 'Claire',
-  role: 'Finance Director, Harrow & Finch Logistics',
-};
+const firstName = (s: ScenarioSummary | undefined) => s?.prospect.name.split(' ')[0] ?? 'She';
 
 const isLive = (phase: CallView['phase']) =>
   phase === 'dialling' || phase === 'ringing' || phase === 'connected';
@@ -33,13 +29,26 @@ export function CallPage() {
   const { view, dial, hangUp } = useCall();
   const live = isLive(view.phase);
 
+  const scenarios = useScenarios();
+  const [chosenId, setChosenId] = usePersistentString('ccc.scenario');
+  const available = scenarios.status === 'ready' ? scenarios.scenarios : [];
+  const selected = available.find((s) => s.id === chosenId) ?? available[0];
+  // The call in progress (or just ended) keeps its prospect while the picker moves on.
+  const [dialled, setDialled] = useState<ScenarioSummary>();
+  const shown = live ? dialled : selected;
+
   useEffect(() => controller?.setLipSyncDelay(lipSyncDelay), [controller, lipSyncDelay]);
   useEffect(() => controller?.setMood(devMood), [controller, devMood]);
+  // Her face follows her mood; each call starts neutral.
+  const mood = view.prospect?.mood ?? 'neutral';
+  useEffect(() => controller?.setMood(mood), [controller, mood]);
 
   const onDial = () => {
+    if (!selected) return;
     // Inside the click: the avatar's audio context may only start from a user gesture.
     controller?.resumeAudio();
-    void dial({ scenarioId: SCENARIO.id, mode: 'coached' });
+    setDialled(selected);
+    void dial({ scenarioId: selected.id, mode: 'coached' });
   };
 
   return (
@@ -55,12 +64,20 @@ export function CallPage() {
             <AvatarStage
               store={avatarStore}
               phoneMode={phoneMode}
-              name={SCENARIO.prospect}
-              role={SCENARIO.role}
+              name={shown?.prospect.name ?? 'Prospect'}
+              role={shown ? `${shown.prospect.role}, ${shown.prospect.company}` : ''}
             >
               <div className="absolute top-3 left-3">
-                <StatusChip view={view} prospect={SCENARIO.firstName} />
+                <StatusChip view={view} prospect={firstName(shown)} />
               </div>
+              {live && view.meeting !== undefined && (
+                <p
+                  role="status"
+                  className="absolute top-3 right-3 rounded-full bg-emerald-600/90 px-3 py-1 text-sm font-medium text-white"
+                >
+                  ✓ Meeting booked{view.meeting && ` · ${view.meeting}`}
+                </p>
+              )}
               {view.phase === 'ended' && (
                 <div
                   role="alert"
@@ -71,8 +88,24 @@ export function CallPage() {
                 </div>
               )}
             </AvatarStage>
-            <p className="text-sm text-slate-400">
-              {SCENARIO.title}. Put your headset on, press Dial, and get a meeting.
+            {scenarios.status === 'ready' && available.length > 0 && (
+              <ScenarioPicker
+                scenarios={available}
+                selectedId={(live ? dialled : selected)?.id}
+                onSelect={setChosenId}
+                disabled={live}
+              />
+            )}
+            <p
+              className="text-sm text-slate-400"
+              role={scenarios.status === 'error' ? 'alert' : undefined}
+            >
+              {scenarios.status === 'loading' && 'Loading scenarios…'}
+              {scenarios.status === 'error' && scenarios.message}
+              {scenarios.status === 'ready' &&
+                (selected
+                  ? `Goal: ${selected.winCondition}. Put your headset on and press Dial.`
+                  : 'No scenarios found: check the API log.')}
             </p>
           </section>
 
@@ -80,7 +113,7 @@ export function CallPage() {
             <h2 className="px-4 pt-4 text-sm font-medium text-slate-300">Transcript</h2>
             <div className="min-h-48 flex-1 overflow-y-auto">
               {view.room ? (
-                <Transcript prospectName={SCENARIO.firstName} />
+                <Transcript prospectName={firstName(dialled)} />
               ) : (
                 <p className="p-4 text-sm text-slate-500">Press Dial to start a call.</p>
               )}
@@ -113,7 +146,8 @@ export function CallPage() {
             <button
               type="button"
               onClick={onDial}
-              className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-6 py-3 font-medium text-white hover:bg-emerald-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+              disabled={!selected}
+              className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-6 py-3 font-medium text-white hover:bg-emerald-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <PhoneIcon /> {view.phase === 'ended' ? 'Dial again' : 'Dial'}
             </button>

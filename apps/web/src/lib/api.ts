@@ -3,6 +3,7 @@ import {
   type CreateCallRequest,
   CreateCallResponse,
   HealthResponse,
+  ScenarioListResponse,
 } from '@ccc/contracts';
 import type { z } from 'zod';
 
@@ -45,4 +46,9 @@ export async function fetchHealth(signal?: AbortSignal): Promise<HealthResponse>
 
 export function createCall(body: CreateCallRequest): Promise<CreateCallResponse> {
   return request(CreateCallResponse, '/api/calls', { method: 'POST', body: JSON.stringify(body) });
+}
+
+/** `GET /api/scenarios`: what the picker offers, easiest first. */
+export function fetchScenarios(signal?: AbortSignal): Promise<ScenarioListResponse> {
+  return request(ScenarioListResponse, '/api/scenarios', { signal });
 }

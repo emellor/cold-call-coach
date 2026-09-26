@@ -1,6 +1,6 @@
 import { llm } from '@livekit/agents';
 import { describe, expect, it } from 'vitest';
-import { chatContextToTurns } from './chat.ts';
+import { chatContextToTurns, repSpeakingSeconds } from './chat.ts';
 
 describe('chatContextToTurns', () => {
   it('maps spoken user and assistant messages to rep and prospect turns, in order', () => {
@@ -17,5 +17,13 @@ describe('chatContextToTurns', () => {
       { speaker: 'rep', text: 'Hi Claire, Sam from WattGuard.', interrupted: false },
       { speaker: 'prospect', text: "Look, I'm about to", interrupted: true },
     ]);
+  });
+});
+
+describe('repSpeakingSeconds', () => {
+  it("measures the rep's turn from LiveKit's speaking timestamps", () => {
+    expect(repSpeakingSeconds({ startedSpeakingAt: 100.5, stoppedSpeakingAt: 148 })).toBe(47.5);
+    expect(repSpeakingSeconds({ startedSpeakingAt: 100 })).toBe(0);
+    expect(repSpeakingSeconds(undefined)).toBe(0);
   });
 });

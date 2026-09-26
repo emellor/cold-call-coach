@@ -59,6 +59,7 @@ pnpm test apps/api          # filter by path
 pnpm test -t "health"       # filter by name
 
 pnpm --filter @ccc/agent download-files   # fetch the agent's model files (turn detector, VAD)
+pnpm simulate --help        # text-only persona regression; spends Claude tokens, run by hand
 ```
 
 ## How the code runs
@@ -86,6 +87,9 @@ pnpm --filter @ccc/agent download-files   # fetch the agent's model files (turn 
   an `LLM` instance is configured, so `DirectClaudeLLM` is a placeholder that must stay; its
   `chat()` is never called. Don't swap in `@livekit/agents-plugin-anthropic`: it can't set
   effort or place the state note.
+- **Each call loads its scenario** from the API (`API_BASE_URL` + `INTERNAL_API_SECRET`):
+  voice (or `CARTESIA_VOICE_ID` while the file has the placeholder), STT locale, keyterms
+  and opening line. A missing piece ends the call with a reason the rep can read.
 - **Barge-in**: LiveKit cancels the `llmNode` stream; `claudeTextStream` aborts the HTTP request
   on cancel. Preemptive generation is on (LiveKit's default), so a reply can be generated and
   then discarded: act on anything a reply "does" only once its message is committed.
@@ -95,6 +99,42 @@ pnpm --filter @ccc/agent download-files   # fetch the agent's model files (turn 
   (`pnpm --filter @ccc/agent download-files`). `audio` is LiveKit's on-device replacement.
 - **A local LiveKit server** (`livekit-server --dev`, key `devkey`, secret `secret`,
   `ws://localhost:7880`) runs the full dispatch path without LiveKit Cloud.
+
+## Scenarios and the prospect's brain
+
+- **Data** lives in `scenarios/`: `product.json`, one file per scenario (named after its
+  `id`), `rubrics/*.json`. Schemas are in `packages/contracts/src/scenario.ts`;
+  `ScenarioCatalog` also checks cross-file references. `scenarios/scenarios.test.ts`
+  validates every file and runs scripted judgements through the real state engine, so a
+  threshold edit that makes a scenario unwinnable (or unlosable) fails a test.
+- **API**: at boot `readScenarioCatalog` validates the files (a bad one stops the boot)
+  and `syncScenarios` upserts them by `(id, version)`, retrying until Postgres answers.
+  Routes read the table back: `GET /api/scenarios` (summaries only; private facts never
+  leave the server) and `GET /internal/scenarios/:id` (agent only, `x-internal-secret`).
+  The product and rubrics stay in memory; there are no tables for them.
+- **Core** (pure): `buildProspectSystemPrompt` (no product details: she doesn't know what
+  the caller sells), `stateEngine` (`applyJudgement`, `moodFor`, `stateToInstruction`,
+  `meetingAllowed`), `withStateNote` (Opus: a final `system` message; Haiku: appended to the
+  last user turn) and the judge's prompt. Private facts are keyed `pain_1`…`timing`
+  (`FactKey`), a fixed enum so the judge's structured-output schema never changes.
+- **Agent**: `ProspectBrain` (LiveKit-free, shared with the simulator) holds her state,
+  queues one judgement per committed rep turn (`ConversationItemAdded`, role `user`) and
+  applies them in order. Her reply reads `brain.note()` and never waits for the judge: the
+  one-turn lag is by design. Her tools are side-channel: `llmNode` tags each reply with an
+  id in the first `ChatChunk`'s `extra` (`REPLY_ID_KEY`), LiveKit copies it onto the
+  committed message, and `actOnReply` runs only for a reply committed un-interrupted. A
+  preemptive generation that was discarded never commits, so its tools never run.
+- **Meetings** stand only if `meetingAllowed` agrees, checked against the state her reply
+  was written under and the rep's last three judged turns; otherwise her next note says
+  nothing is agreed. A booked meeting makes `meeting_booked` the call's outcome however it
+  ends. When patience hits `hangUpAt` the next note forces a goodbye, and the call ends
+  after that reply even if she forgets `end_call`.
+- **The judge** is a `client.beta.messages.parse` call on `COACH_MODEL`/`COACH_EFFORT`. Its
+  format comes from `structuredFormat` (`claude/structuredOutput.ts`), not the SDK's
+  `betaZodOutputFormat`, which folds `enum` into the description and so would leave the
+  stage and fact keys unconstrained. A failed or timed-out judgement applies no signals.
+- **`scripts/simulate-call.ts`** drives the same brain, request builders and tools with
+  Claude as the rep (`scripts/simulate/`); its harness is unit-tested with a fake Claude.
 
 ## The avatar (apps/web/src/avatar)
 

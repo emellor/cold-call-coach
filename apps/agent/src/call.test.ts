@@ -92,3 +92,52 @@ describe('CallController', () => {
     expect(deps.shutdown).toHaveBeenCalledWith('hung_up_by_prospect');
   });
 });
+
+describe('CallController and a booked meeting', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  async function connected() {
+    const ctx = setup(() => 0);
+    const pickUp = ctx.controller.ringAndPickUp();
+    await vi.advanceTimersByTimeAsync(RING_MS.min);
+    await pickUp;
+    ctx.events.length = 0;
+    return ctx;
+  }
+
+  it('announces the meeting and keeps the call going', async () => {
+    const { controller, events, deps } = await connected();
+    await controller.recordMeeting('Tuesday at 10am');
+    expect(events).toEqual([
+      `${Topics.callState.name}:{"phase":"connected","outcome":"meeting_booked","reason":"Tuesday at 10am"}`,
+    ]);
+    expect(controller.phase).toBe('connected');
+    expect(deps.shutdown).not.toHaveBeenCalled();
+  });
+
+  it('ends as meeting_booked however the call then ends, keeping the first slot', async () => {
+    const { controller, events } = await connected();
+    await controller.recordMeeting('Tuesday at 10am');
+    await controller.recordMeeting('Wednesday at 3pm');
+    await controller.end('ended_by_rep');
+    expect(events.slice(1)).toEqual([
+      `${Topics.callState.name}:{"phase":"ended","outcome":"meeting_booked","reason":"Tuesday at 10am"}`,
+      'shutdown:meeting_booked',
+    ]);
+  });
+
+  it('ignores a meeting before she has picked up or after the call ended', async () => {
+    const ringing = setup();
+    await ringing.controller.recordMeeting('Monday');
+    expect(ringing.events).toEqual([]);
+
+    const { controller, events } = await connected();
+    await controller.end('hung_up_by_prospect', 'Not interested');
+    await controller.recordMeeting('Monday');
+    expect(events).toEqual([
+      `${Topics.callState.name}:{"phase":"ended","outcome":"hung_up_by_prospect","reason":"Not interested"}`,
+      'shutdown:hung_up_by_prospect',
+    ]);
+  });
+});

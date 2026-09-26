@@ -1,14 +1,22 @@
+import type { ScenarioCatalog } from '@ccc/contracts';
 import { buildApp } from './app.ts';
 import { ConfigError, loadConfig, loadDotEnv, type Config } from './config.ts';
 import { createDb } from './db/client.ts';
+import { scenariosDir } from './paths.ts';
+import { ScenarioFilesError, readScenarioCatalog, syncScenarios } from './scenarios.ts';
+
+/** How often boot retries the scenario upsert while the database is unreachable. */
+const SYNC_RETRY_MS = 5_000;
 
 loadDotEnv();
 
 let config: Config;
+let catalog: ScenarioCatalog;
 try {
   config = loadConfig(process.env);
+  catalog = await readScenarioCatalog(scenariosDir);
 } catch (error) {
-  if (error instanceof ConfigError) {
+  if (error instanceof ConfigError || error instanceof ScenarioFilesError) {
     console.error(error.message);
     process.exit(1);
   }
@@ -17,7 +25,7 @@ try {
 
 const { pool, db } = createDb(config.DATABASE_URL);
 const app = await buildApp(
-  { config, pool, db },
+  { config, pool, db, catalog },
   {
     logger:
       config.NODE_ENV === 'development'
@@ -26,9 +34,30 @@ const app = await buildApp(
   },
 );
 
+// The API still starts without a database (health reports it), so the upsert
+// keeps retrying until Postgres is up and migrated.
+let syncTimer: NodeJS.Timeout | undefined;
+const sync = async (): Promise<void> => {
+  try {
+    await syncScenarios(db, catalog.scenarios);
+    app.log.info(
+      { scenarios: catalog.scenarios.map((s) => `${s.id}@${s.version}`) },
+      'scenarios synced',
+    );
+  } catch (error) {
+    app.log.error(
+      { err: error },
+      `could not store the scenarios (is Postgres up, and has \`pnpm db:migrate\` run?); retrying in ${SYNC_RETRY_MS / 1000}s`,
+    );
+    syncTimer = setTimeout(() => void sync(), SYNC_RETRY_MS).unref();
+  }
+};
+await sync();
+
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {
     app.log.info({ signal }, 'shutting down');
+    clearTimeout(syncTimer);
     void app
       .close()
       .then(() => pool.end())

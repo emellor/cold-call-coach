@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigError, DEV_DATABASE_URL, liveKitConfig, loadConfig } from './config.ts';
+import {
+  ConfigError,
+  DEV_DATABASE_URL,
+  DEV_INTERNAL_API_SECRET,
+  liveKitConfig,
+  loadConfig,
+} from './config.ts';
 
 describe('loadConfig', () => {
   it('applies defaults and falls back to the docker-compose database outside production', () => {
@@ -22,6 +28,24 @@ describe('loadConfig', () => {
 
   it('rejects a non-postgres URL', () => {
     expect(() => loadConfig({ DATABASE_URL: 'mysql://x' })).toThrowError(/postgres:\/\//);
+  });
+
+  it('takes INTERNAL_API_SECRET when set, treating a blank line as unset', () => {
+    expect(loadConfig({ INTERNAL_API_SECRET: DEV_INTERNAL_API_SECRET }).INTERNAL_API_SECRET).toBe(
+      DEV_INTERNAL_API_SECRET,
+    );
+    expect(loadConfig({ INTERNAL_API_SECRET: '' }).INTERNAL_API_SECRET).toBeUndefined();
+    expect(() => loadConfig({ INTERNAL_API_SECRET: 'short' })).toThrowError(/16 characters/);
+  });
+
+  it("refuses .env.example's development secret in production", () => {
+    const production = { NODE_ENV: 'production', DATABASE_URL: 'postgres://db/coach' };
+    expect(() =>
+      loadConfig({ ...production, INTERNAL_API_SECRET: DEV_INTERNAL_API_SECRET }),
+    ).toThrowError(/INTERNAL_API_SECRET: is the development value/);
+    expect(
+      loadConfig({ ...production, INTERNAL_API_SECRET: 'a'.repeat(64) }).INTERNAL_API_SECRET,
+    ).toHaveLength(64);
   });
 });
 

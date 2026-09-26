@@ -24,13 +24,15 @@ export interface CallControllerDeps {
 /**
  * The call's lifecycle: ring, pick up with the scenario's opening line (no LLM,
  * so the pick-up is instant), enforce the 15-minute ceiling, and end exactly
- * once whichever side ends it.
+ * once whichever side ends it. A booked meeting is the call's outcome however
+ * it then ends.
  */
 export class CallController {
   readonly #deps: CallControllerDeps;
   readonly #stop = new AbortController();
   #phase: CallPhase = 'ringing';
   #ending: Promise<void> | undefined;
+  #meeting: string | undefined;
 
   constructor(deps: CallControllerDeps) {
     this.#deps = deps;
@@ -38,6 +40,18 @@ export class CallController {
 
   get phase(): CallPhase {
     return this.#phase;
+  }
+
+  /** She agreed to a meeting and the rules let it stand; the call carries on. */
+  async recordMeeting(when: string): Promise<void> {
+    if (this.#meeting !== undefined || this.#phase !== 'connected') return;
+    this.#meeting = when;
+    this.#deps.logger.info({ when }, 'meeting booked');
+    await this.#deps.publisher.publish(Topics.callState, {
+      phase: 'connected',
+      outcome: 'meeting_booked',
+      reason: when,
+    });
   }
 
   async ringAndPickUp(): Promise<void> {
@@ -66,15 +80,17 @@ export class CallController {
     return this.#ending;
   }
 
-  async #finish(outcome: CallOutcome, reason: string | undefined): Promise<void> {
+  async #finish(endedBy: CallOutcome, why: string | undefined): Promise<void> {
     this.#phase = 'ended';
     this.#stop.abort();
+    const outcome = this.#meeting === undefined ? endedBy : 'meeting_booked';
+    const reason = this.#meeting ?? why;
     await this.#deps.publisher.publish(Topics.callState, {
       phase: 'ended',
       outcome,
       ...(reason ? { reason } : {}),
     });
-    this.#deps.logger.info({ outcome, reason }, 'call ended');
+    this.#deps.logger.info({ outcome, reason, endedBy, why }, 'call ended');
     this.#deps.shutdown(outcome);
   }
 

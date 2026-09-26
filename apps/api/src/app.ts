@@ -1,3 +1,4 @@
+import type { ScenarioCatalog } from '@ccc/contracts';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import type pg from 'pg';
 import { ZodError } from 'zod';
@@ -6,12 +7,15 @@ import type { Db } from './db/client.ts';
 import { webDistDir } from './paths.ts';
 import { registerCallRoutes } from './routes/calls.ts';
 import { registerHealthRoutes } from './routes/health.ts';
+import { registerScenarioRoutes } from './routes/scenarios.ts';
 import { registerWeb } from './web.ts';
 
 export interface AppDeps {
   config: Config;
   pool: pg.Pool;
   db: Db;
+  /** The validated scenarios/ files. The scenarios themselves are read back from the table. */
+  catalog: ScenarioCatalog;
 }
 
 export interface BuildAppOptions {
@@ -40,6 +44,7 @@ export async function buildApp(
   });
 
   registerHealthRoutes(app, deps.pool);
+  registerScenarioRoutes(app, deps);
   registerCallRoutes(app, deps);
   await registerWeb(app, options.webDistDir ?? webDistDir);
 

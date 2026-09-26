@@ -35,7 +35,11 @@ export function AvatarStage({ store, phoneMode, name, role, children }: AvatarSt
   const showAvatar = !phoneMode && status.kind === 'ready';
 
   return (
-    <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-slate-800 bg-gradient-to-b from-slate-800 via-slate-900 to-slate-950">
+    <div
+      role="region"
+      aria-label="Prospect video"
+      className="relative aspect-video w-full overflow-hidden rounded-xl border border-slate-800 bg-gradient-to-b from-slate-800 via-slate-900 to-slate-950"
+    >
       {/* Kept in layout (visibility, not display) so TalkingHead always has a size. */}
       <div
         ref={containerRef}

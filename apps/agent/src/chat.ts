@@ -21,3 +21,10 @@ export function chatContextToTurns(chatCtx: llm.ChatContext): TranscriptTurn[] {
   }
   return turns;
 }
+
+/** How long the rep spoke in a committed turn, from LiveKit's message metrics (0 if unknown). */
+export function repSpeakingSeconds(metrics: llm.MetricsReport | undefined): number {
+  const { startedSpeakingAt, stoppedSpeakingAt } = metrics ?? {};
+  if (startedSpeakingAt === undefined || stoppedSpeakingAt === undefined) return 0;
+  return Math.max(0, stoppedSpeakingAt - startedSpeakingAt);
+}

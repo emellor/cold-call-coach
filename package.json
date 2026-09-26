@@ -16,9 +16,12 @@
     "format": "prettier --write .",
     "typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
     "db:migrate": "pnpm --filter @ccc/api db:migrate",
-    "avatar:fetch": "node scripts/fetch-avatar.mjs"
+    "avatar:fetch": "node scripts/fetch-avatar.mjs",
+    "simulate": "node scripts/simulate-call.ts"
   },
   "devDependencies": {
+    "@ccc/contracts": "workspace:*",
+    "@ccc/core": "workspace:*",
     "@eslint/js": "^10.0.1",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",

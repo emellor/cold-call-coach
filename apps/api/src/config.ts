@@ -6,6 +6,9 @@ import { repoRoot } from './paths.ts';
 /** The docker-compose database; used when DATABASE_URL is unset outside production. */
 export const DEV_DATABASE_URL = 'postgres://coach:coach@localhost:5432/coach';
 
+/** `.env.example`'s value, so a fresh checkout works locally. Refused in production. */
+export const DEV_INTERNAL_API_SECRET = 'dev-only-internal-secret';
+
 /** An empty `KEY=` line in .env means unset, not "the empty string". */
 const optional = <S extends z.ZodType>(schema: S) =>
   z.preprocess((v) => (v === '' ? undefined : v), schema.optional());
@@ -23,6 +26,8 @@ const Config = z.object({
   LIVEKIT_URL: optional(z.string().regex(/^wss?:\/\//, 'must be a ws:// or wss:// URL')),
   LIVEKIT_API_KEY: optional(z.string()),
   LIVEKIT_API_SECRET: optional(z.string()),
+  // Shared with the agent for the /internal routes; they answer 503 without it.
+  INTERNAL_API_SECRET: optional(z.string().min(16, 'must be at least 16 characters')),
 });
 export type Config = z.infer<typeof Config>;
 
@@ -44,6 +49,15 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     input.DATABASE_URL = DEV_DATABASE_URL;
   }
   const parsed = Config.safeParse(input);
+  if (
+    parsed.success &&
+    parsed.data.NODE_ENV === 'production' &&
+    parsed.data.INTERNAL_API_SECRET === DEV_INTERNAL_API_SECRET
+  ) {
+    throw new ConfigError(
+      'Invalid API configuration:\n  - INTERNAL_API_SECRET: is the development value; generate one with `openssl rand -hex 32`.',
+    );
+  }
   if (!parsed.success) {
     const lines = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`);
     throw new ConfigError(

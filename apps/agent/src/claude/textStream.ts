@@ -19,12 +19,18 @@ export interface StreamingMessages {
 export interface ClaudeTextStreamOptions {
   messages: StreamingMessages;
   params: BetaMessageStreamParams;
-  /** The finished message: usage, stop reason, content blocks. Not called if cancelled. */
+  /** The finished message: usage, stop reason, content blocks. Called first; not if cancelled. */
   onComplete?: (message: BetaMessage) => void;
   /** Claude declined; the neutral line has been queued in its place. */
   onRefusal?: (message: BetaMessage) => void;
   /** The request failed; the neutral line has been queued so the call isn't silent. */
   onError?: (error: unknown) => void;
+  /**
+   * Called after onComplete (not after a refusal) with whether any text was
+   * spoken; text it returns is spoken last. Lets a reply that was only a tool
+   * call still say something, so LiveKit commits it.
+   */
+  closingText?: (message: BetaMessage, spoke: boolean) => string | undefined;
 }
 
 /**
@@ -56,11 +62,14 @@ export function claudeTextStream(options: ClaudeTextStreamOptions): ReadableStre
         }
         const message = await stream.finalMessage();
         if (cancelled) return;
+        options.onComplete?.(message);
         if (message.stop_reason === 'refusal') {
           options.onRefusal?.(message);
           sayNeutralLine();
+        } else {
+          const closing = options.closingText?.(message, spoke);
+          if (closing) say(spoke ? ` ${closing}` : closing);
         }
-        options.onComplete?.(message);
         controller.close();
       };
 

@@ -2,6 +2,7 @@ import {
   type CallOutcome,
   type CreateCallRequest,
   type DebugLatencyPayload,
+  type ProspectStatePayload,
   type Topic,
   Topics,
   parseTopicMessage,
@@ -25,6 +26,10 @@ export interface CallView {
   /** Why the call ended, in words for the rep. */
   message?: string;
   latency: DebugLatencyPayload[];
+  /** Her latest mood and hidden numbers (the page shows only the mood). */
+  prospect?: ProspectStatePayload;
+  /** Set once a meeting is booked: the slot she agreed to ('' if the agent sent none). */
+  meeting?: string;
 }
 
 /** Hang up if nobody answers: usually the agent worker isn't running. */
@@ -37,6 +42,21 @@ const OUTCOME_MESSAGES: Record<CallOutcome, string> = {
   timeout: 'The 15-minute limit was reached.',
   error: 'The call failed.',
 };
+
+/** The ended-call message: the outcome, plus the agent's reason where it adds something. */
+export function describeOutcome(outcome: CallOutcome, reason?: string): string {
+  switch (outcome) {
+    case 'meeting_booked':
+      return reason ? `Meeting booked: ${reason}.` : OUTCOME_MESSAGES.meeting_booked;
+    case 'hung_up_by_prospect':
+      return reason ? `She hung up. Her reason: “${reason}”` : OUTCOME_MESSAGES.hung_up_by_prospect;
+    case 'ended_by_rep':
+      return OUTCOME_MESSAGES.ended_by_rep;
+    case 'timeout':
+    case 'error':
+      return reason ?? OUTCOME_MESSAGES[outcome];
+  }
+}
 
 export function describeDialError(error: unknown): string {
   if (error instanceof ApiRequestError) return error.message;
@@ -78,7 +98,7 @@ export function useCall() {
   }, []);
 
   const finish = useCallback(
-    (outcome: CallOutcome | undefined, message?: string) => {
+    (outcome: CallOutcome | undefined, reason?: string) => {
       stopRinging();
       if (liveRef.current) {
         liveRef.current = false;
@@ -86,16 +106,25 @@ export function useCall() {
       }
       const room = roomRef.current;
       roomRef.current = null;
-      setView((v) =>
-        v.phase === 'ended' || v.phase === 'idle'
-          ? v
-          : {
-              ...v,
-              phase: 'ended',
-              outcome,
-              message: message ?? (outcome ? OUTCOME_MESSAGES[outcome] : undefined),
-            },
-      );
+      setView((v) => {
+        if (v.phase === 'ended' || v.phase === 'idle') return v;
+        // As on the agent: a booked meeting is the outcome however the call ends,
+        // including when the rep hangs up first and misses the agent's last word.
+        if (v.meeting !== undefined) {
+          return {
+            ...v,
+            phase: 'ended',
+            outcome: 'meeting_booked',
+            message: describeOutcome('meeting_booked', v.meeting || undefined),
+          };
+        }
+        return {
+          ...v,
+          phase: 'ended',
+          outcome,
+          message: outcome ? describeOutcome(outcome, reason) : reason,
+        };
+      });
       void room?.disconnect();
     },
     [stopRinging],
@@ -114,10 +143,21 @@ export function useCall() {
       onTopic(room, Topics.callState, (state) => {
         if (state.phase === 'connected') {
           stopRinging();
-          setView((v) => ({ ...v, phase: 'connected', connectedAt: Date.now() }));
+          setView((v) => ({
+            ...v,
+            phase: 'connected',
+            connectedAt: v.connectedAt ?? Date.now(),
+            // A meeting is announced mid-call, as a connected state with an outcome.
+            ...(state.outcome === 'meeting_booked'
+              ? { meeting: state.reason ?? '', outcome: state.outcome }
+              : {}),
+          }));
         } else if (state.phase === 'ended') {
           finish(state.outcome, state.reason);
         }
+      });
+      onTopic(room, Topics.prospectState, (prospect) => {
+        setView((v) => ({ ...v, prospect }));
       });
       onTopic(room, Topics.debugLatency, (latency) => {
         setView((v) => ({ ...v, latency: [...v.latency, latency] }));
