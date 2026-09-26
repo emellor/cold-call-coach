@@ -34,6 +34,11 @@ export async function fetchScenario(options: {
       { cause: error },
     );
   }
+  if (res.status === 401) {
+    throw new ScenarioLoadError(
+      "the API refused the agent's INTERNAL_API_SECRET: it must be the same value on the agent and the API",
+    );
+  }
   const body: unknown = await res.json().catch(() => null);
   if (!res.ok) {
     const detail =
