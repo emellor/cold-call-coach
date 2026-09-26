@@ -31,7 +31,9 @@ export function LatencyPanel({ entries }: { entries: DebugLatencyPayload[] }) {
       <h2 id="latency-heading" className="mb-2 font-medium text-slate-300">
         Latency
         <span className="ml-2 font-normal text-slate-500">
-          {last ? `turn ${last.turn} · ${entries.length} replies` : 'no replies yet'}
+          {last
+            ? `turn ${last.turn} · ${entries.length} ${entries.length === 1 ? 'reply' : 'replies'}`
+            : 'no replies yet'}
         </span>
       </h2>
       <table className="w-full tabular-nums">

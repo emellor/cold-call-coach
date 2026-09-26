@@ -61,7 +61,11 @@ const fakes = vi.hoisted(() => {
 vi.mock('livekit-client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('livekit-client')>()),
   Room: fakes.FakeRoom,
-  RoomEvent: { Disconnected: 'disconnected' },
+  RoomEvent: {
+    Disconnected: 'disconnected',
+    Reconnecting: 'reconnecting',
+    Reconnected: 'reconnected',
+  },
   DisconnectReason: { CLIENT_INITIATED: 1 },
 }));
 vi.mock('../audio/ringTone.ts', () => ({ RingTone: { start: () => fakes.ring } }));
@@ -315,6 +319,58 @@ describe('useCall: the live coach', () => {
       },
       tip,
     });
+  });
+});
+
+describe('useCall: a dropped connection', () => {
+  beforeEach(() => {
+    fakes.FakeRoom.instances = [];
+    fakes.FakeRoom.answers = {};
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('keeps the call going while LiveKit reconnects, and ends it only if that fails', async () => {
+    const { result } = await connectedCall();
+    act(() => lastRoom().emit('reconnecting'));
+    expect(result.current.view).toMatchObject({ phase: 'connected', reconnecting: true });
+    act(() => lastRoom().emit('reconnected'));
+    expect(result.current.view).toMatchObject({ phase: 'connected', reconnecting: false });
+
+    act(() => lastRoom().emit('reconnecting'));
+    act(() => lastRoom().emit('disconnected', 3)); // not the rep's own doing
+    expect(result.current.view).toMatchObject({
+      phase: 'ended',
+      outcome: 'error',
+      reconnecting: false,
+      message: "The connection dropped and couldn't be restored.",
+    });
+  });
+});
+
+describe('useCall: the agent’s notices', () => {
+  beforeEach(() => {
+    fakes.FakeRoom.instances = [];
+    fakes.FakeRoom.answers = {};
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('keeps the latest notice of each kind, in exam calls too, until dismissed', async () => {
+    const { result } = await connectedCall('exam');
+    const tts = { level: 'error', code: 'tts', message: 'Her voice (Cartesia) failed.' };
+    await act(() => lastRoom().deliver('call.notice', tts));
+    await act(() =>
+      lastRoom().deliver('call.notice', { level: 'warn', code: 'cost', message: 'Over $2.' }),
+    );
+    await act(() =>
+      lastRoom().deliver('call.notice', { level: 'warn', code: 'cost', message: 'Over $2 now.' }),
+    );
+    await act(() => lastRoom().deliver('call.notice', { level: 'loud', code: 'cost' }));
+    expect(result.current.view.agentNotices).toEqual([
+      tts,
+      { level: 'warn', code: 'cost', message: 'Over $2 now.' },
+    ]);
+    act(() => result.current.dismissAgentNotice('tts'));
+    expect(result.current.view.agentNotices.map((n) => n.code)).toEqual(['cost']);
   });
 });
 

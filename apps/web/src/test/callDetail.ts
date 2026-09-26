@@ -74,6 +74,8 @@ export function callDetail(reviewPatch: Partial<CallReview> | null = {}): CallDe
       },
       overallScore: reviewPatch === null ? null : 38,
       reviewStatus: reviewPatch === null ? null : (reviewPatch.status ?? 'ready'),
+      costUsd: 0.2918,
+      overBudget: false,
     },
     outcomeReason: 'Out of patience',
     turns: [
@@ -131,5 +133,25 @@ export function callDetail(reviewPatch: Partial<CallReview> | null = {}): CallDe
       timeToFirstQuestionSec: 5,
     },
     review: reviewPatch === null ? null : review(reviewPatch),
+    cost: {
+      totalUsd: 0.2918,
+      lines: [
+        {
+          key: 'prospect',
+          model: 'claude-opus-5',
+          quantity: 25_900,
+          unit: 'tokens',
+          cachedTokens: 20_000,
+          usd: 0.0865,
+        },
+        { key: 'judge', model: 'claude-opus-5', quantity: 18_200, unit: 'tokens', usd: 0.0421 },
+        { key: 'review', model: 'claude-opus-5', quantity: null, unit: 'tokens', usd: 0.0625 },
+        { key: 'stt', model: 'nova-3', quantity: 1.38, unit: 'minutes', usd: 0.0106 },
+        { key: 'tts', model: 'sonic-3', quantity: 1_802, unit: 'characters', usd: 0.0901 },
+      ],
+      incomplete: false,
+      warnAboveUsd: 2,
+      overBudget: false,
+    },
   };
 }

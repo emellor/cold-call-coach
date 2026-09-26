@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CallMode, CallOutcome, CallPhase, ScenarioId } from './call.ts';
 import { CallTurn } from './callLog.ts';
+import { CostBreakdown } from './cost.ts';
 import { CallMetrics } from './metrics.ts';
 import { ReviewResult, ReviewStatus } from './review.ts';
 import { Difficulty, ProductSpec, ScenarioSpec } from './scenario.ts';
@@ -12,6 +13,12 @@ export const ApiError = z.object({
 });
 export type ApiError = z.infer<typeof ApiError>;
 
+const Capability = z.object({
+  ok: z.boolean(),
+  /** Why not, in words for the page: which settings to add. */
+  reason: z.string().optional(),
+});
+
 /** `GET /api/health` */
 export const HealthResponse = z.object({
   ok: z.boolean(),
@@ -20,8 +27,21 @@ export const HealthResponse = z.object({
     latencyMs: z.number().nonnegative().optional(),
     error: z.string().optional(),
   }),
+  /**
+   * What the API's own settings allow. The agent's keys (Deepgram, Cartesia,
+   * Claude for her replies) show up when a call starts.
+   */
+  features: z.object({ calls: Capability, reviews: Capability }).optional(),
 });
 export type HealthResponse = z.infer<typeof HealthResponse>;
+
+/** `GET /api/auth/session`: whether this deploy needs the password, and whether we have signed in. */
+export const SessionResponse = z.object({ required: z.boolean(), signedIn: z.boolean() });
+export type SessionResponse = z.infer<typeof SessionResponse>;
+
+/** `POST /api/auth/login`: the password (APP_PASSWORD) for a session cookie. */
+export const LoginRequest = z.object({ password: z.string().min(1).max(1024) });
+export type LoginRequest = z.infer<typeof LoginRequest>;
 
 /** `POST /api/calls` */
 export const CreateCallRequest = z.object({
@@ -85,6 +105,10 @@ export const CallSummary = z.object({
   }),
   overallScore: z.int().min(0).max(100).nullable(),
   reviewStatus: ReviewStatus.nullable(),
+  /** Everything priced so far (the call's providers and its review); null before the log. */
+  costUsd: z.number().nonnegative().nullable(),
+  /** Over the price table's warning line. */
+  overBudget: z.boolean(),
 });
 export type CallSummary = z.infer<typeof CallSummary>;
 
@@ -110,6 +134,8 @@ export const CallDetail = z.object({
   /** Null until the call log has arrived. */
   metrics: CallMetrics.nullable(),
   review: CallReview.nullable(),
+  /** Null until the call log has arrived. */
+  cost: CostBreakdown.nullable(),
 });
 export type CallDetail = z.infer<typeof CallDetail>;
 

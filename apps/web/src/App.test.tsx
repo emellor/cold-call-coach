@@ -100,6 +100,26 @@ describe('App', () => {
     expect(await screen.findByRole('button', { name: 'Dial' })).toBeEnabled();
   });
 
+  it('says which of calls and reviews the API has switched off, and why', async () => {
+    mockApi({
+      '/api/health': () =>
+        json(200, {
+          ok: true,
+          db: { ok: true, latencyMs: 2 },
+          features: {
+            calls: { ok: true },
+            reviews: { ok: false, reason: 'Reviews are off: set ANTHROPIC_API_KEY on the API.' },
+          },
+        }),
+      '/api/scenarios': () => json(200, SCENARIOS),
+    });
+    render(<App />);
+    expect(
+      await screen.findByText('Reviews are off: set ANTHROPIC_API_KEY on the API.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Calls are off/)).toBeNull();
+  });
+
   it('reports a database failure from a 503 health body', async () => {
     mockApi({
       '/api/health': () => json(503, { ok: false, db: { ok: false, error: 'connection refused' } }),

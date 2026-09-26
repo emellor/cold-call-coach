@@ -79,6 +79,14 @@ describe('readCallConfig', () => {
     });
   });
 
+  it('builds the API URL from Render’s private host:port only when API_BASE_URL is unset', () => {
+    const hostport = { ...keys, API_BASE_URL: '', API_HOSTPORT: 'cold-call-coach:10000' };
+    const derived = readCallConfig(hostport);
+    expect(derived.ok && derived.config.API_BASE_URL).toBe('http://cold-call-coach:10000');
+    const explicit = readCallConfig({ ...hostport, API_BASE_URL: 'https://coach.example.com' });
+    expect(explicit.ok && explicit.config.API_BASE_URL).toBe('https://coach.example.com');
+  });
+
   it('reports each missing provider key by name', () => {
     const result = readCallConfig({ ANTHROPIC_API_KEY: 'a' });
     expect(result.ok).toBe(false);

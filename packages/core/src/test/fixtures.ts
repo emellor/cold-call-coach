@@ -1,6 +1,12 @@
 // Test fixtures: a scenario and product shaped like the files in scenarios/
 // (core cannot read files, even in tests).
-import { type JudgeResult, type JudgeSignals, ProductSpec, ScenarioSpec } from '@ccc/contracts';
+import {
+  type JudgeResult,
+  type JudgeSignals,
+  PriceTable,
+  ProductSpec,
+  ScenarioSpec,
+} from '@ccc/contracts';
 
 export const scenario: ScenarioSpec = ScenarioSpec.parse({
   id: 'medium-finance-director',
@@ -90,3 +96,18 @@ export function judged(
 
 /** A deep copy (core has no Node or DOM globals, so no structuredClone). */
 export const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
+/** A price table shaped like config/prices.json, with its figures for the models used here. */
+export const prices: PriceTable = PriceTable.parse({
+  asOf: '2026-09-26',
+  warnAboveUsd: 2,
+  anthropic: {
+    source: 'test',
+    perMillionTokens: {
+      'claude-opus-5': { input: 5, cacheWrite: 6.25, cacheRead: 0.5, output: 25 },
+      'claude-haiku-4-5': { input: 1, cacheWrite: 1.25, cacheRead: 0.1, output: 5 },
+    },
+  },
+  deepgram: { source: 'test', perMinute: { 'nova-3': 0.0077 } },
+  cartesia: { source: 'test', per1kCharacters: { 'sonic-3': 0.05 } },
+});

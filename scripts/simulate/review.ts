@@ -3,6 +3,7 @@
 // without a microphone.
 import type {
   CallOutcome,
+  PriceTable,
   ProductSpec,
   ReviewResult,
   RubricSpec,
@@ -53,6 +54,7 @@ export async function reviewSimulatedCall(options: {
   messages: StreamingMessages;
   model: string;
   effort: Effort;
+  prices: PriceTable;
   scenario: ScenarioSpec;
   product: ProductSpec;
   rubric: RubricSpec;
@@ -70,6 +72,7 @@ export async function reviewSimulatedCall(options: {
     messages: options.messages,
     model: options.model,
     effort: options.effort,
+    prices: options.prices,
   });
   const outcome = await reviewer({
     rubric,

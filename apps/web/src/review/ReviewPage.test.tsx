@@ -144,6 +144,48 @@ describe('ReviewPage', () => {
     expect(await screen.findByText('Saving the call…')).toBeInTheDocument();
   });
 
+  it('shows what the call cost, line by line', async () => {
+    mockApi([callDetail()]);
+    renderPage();
+    const cost = within(await screen.findByRole('region', { name: /Cost/ }));
+    expect(cost.getByRole('heading')).toHaveTextContent('Cost$0.29');
+    const rows = cost.getAllByRole('row').map((r) => r.textContent);
+    expect(rows).toEqual([
+      'Her repliesclaude-opus-5 · 25,900 tokens (20,000 from cache)$0.09',
+      'The coach judging your turnsclaude-opus-5 · 18,200 tokens$0.04',
+      'This reviewclaude-opus-5$0.06',
+      'Hearing younova-3 · 1.38 min$0.01',
+      'Her voicesonic-3 · 1,802 characters$0.09',
+    ]);
+    expect(cost.queryByRole('alert')).toBeNull();
+  });
+
+  it('warns when a call cost more than the warning line, and says what it could not price', async () => {
+    const detail = callDetail();
+    mockApi([
+      {
+        ...detail,
+        cost: {
+          ...detail.cost!,
+          totalUsd: 2.4,
+          overBudget: true,
+          incomplete: true,
+          lines: [
+            ...detail.cost!.lines,
+            { key: 'hint', model: 'claude-x', quantity: 900, unit: 'tokens', usd: null },
+          ],
+        },
+      },
+    ]);
+    renderPage();
+    const cost = within(await screen.findByRole('region', { name: /Cost/ }));
+    expect(cost.getByRole('alert')).toHaveTextContent(
+      'This call cost $2.40+, over the $2.00 warning line.',
+    );
+    expect(cost.getByText('not priced')).toBeInTheDocument();
+    expect(cost.getByText(/add their model to config\/prices.json/)).toBeInTheDocument();
+  });
+
   it('says so when the call does not exist', async () => {
     mockApi([json(404, { error: 'Unknown call' })]);
     renderPage();

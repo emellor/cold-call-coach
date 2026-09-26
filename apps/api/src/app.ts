@@ -1,11 +1,13 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { ScenarioCatalog } from '@ccc/contracts';
+import type { PriceTable, ScenarioCatalog } from '@ccc/contracts';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import type pg from 'pg';
 import { ZodError } from 'zod';
+import { registerAuth } from './auth.ts';
 import type { Config } from './config.ts';
 import type { Db } from './db/client.ts';
 import { webDistDir } from './paths.ts';
+import { readPriceTable } from './prices.ts';
 import { ReviewQueue } from './review/queue.ts';
 import { type Reviewer, claudeReviewer } from './review/reviewer.ts';
 import { registerCallLogRoutes } from './routes/callLog.ts';
@@ -25,7 +27,12 @@ export interface AppDeps {
    * ANTHROPIC_API_KEY (reviews then fail, saying so). Tests pass a stub.
    */
   reviewer?: Reviewer | null;
+  /** Omitted: read from config/prices.json. */
+  prices?: PriceTable;
 }
+
+/** What the routes get: the deps with the price table resolved. */
+export type AppContext = Omit<AppDeps, 'prices'> & { prices: PriceTable };
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -33,12 +40,13 @@ declare module 'fastify' {
   }
 }
 
-function defaultReviewer(config: Config): Reviewer | null {
+function defaultReviewer(config: Config, prices: PriceTable): Reviewer | null {
   if (!config.ANTHROPIC_API_KEY) return null;
   return claudeReviewer({
     messages: new Anthropic({ apiKey: config.ANTHROPIC_API_KEY }).beta.messages,
     model: config.REVIEW_MODEL,
     effort: config.REVIEW_EFFORT,
+    prices,
   });
 }
 
@@ -52,7 +60,11 @@ export async function buildApp(
   deps: AppDeps,
   options: BuildAppOptions = {},
 ): Promise<FastifyInstance> {
-  const app = Fastify({ logger: options.logger ?? false });
+  // Behind Render's proxy (production), the client's address is in X-Forwarded-For.
+  const app = Fastify({
+    logger: options.logger ?? false,
+    trustProxy: deps.config.NODE_ENV === 'production',
+  });
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ZodError) {
@@ -67,18 +79,21 @@ export async function buildApp(
     return reply.code(status).send({ error: status >= 500 ? 'Internal server error' : message });
   });
 
-  const queue = new ReviewQueue({
-    db: deps.db,
-    catalog: deps.catalog,
-    reviewer: deps.reviewer === undefined ? defaultReviewer(deps.config) : deps.reviewer,
-    logger: app.log,
-  });
+  const context: AppContext = { ...deps, prices: deps.prices ?? (await readPriceTable()) };
+  const reviewer =
+    deps.reviewer === undefined ? defaultReviewer(deps.config, context.prices) : deps.reviewer;
+  const queue = new ReviewQueue({ db: deps.db, catalog: deps.catalog, reviewer, logger: app.log });
   app.decorate('reviewQueue', queue);
 
-  registerHealthRoutes(app, deps.pool);
-  registerScenarioRoutes(app, deps);
-  registerCallRoutes(app, deps, queue);
-  registerCallLogRoutes(app, deps, queue);
+  registerAuth(app, deps.config);
+  registerHealthRoutes(app, {
+    pool: deps.pool,
+    config: deps.config,
+    reviewsEnabled: reviewer !== null,
+  });
+  registerScenarioRoutes(app, context);
+  registerCallRoutes(app, context, queue);
+  registerCallLogRoutes(app, context, queue);
   await registerWeb(app, options.webDistDir ?? webDistDir);
 
   return app;

@@ -33,9 +33,24 @@ export function SystemStatus() {
               label: `API ok · Database unavailable: ${state.health.db.error}`,
             };
 
+  // What the API's settings leave switched off, so nobody dials into a dead end.
+  const off =
+    state.kind === 'ok'
+      ? [state.health.features?.calls, state.health.features?.reviews].flatMap((f) =>
+          f && !f.ok && f.reason ? [f.reason] : [],
+        )
+      : [];
+
   return (
-    <p role="status" className={`text-xs ${text.tone}`}>
-      {text.label}
-    </p>
+    <div className="flex flex-col items-end gap-0.5">
+      <p role="status" className={`text-xs ${text.tone}`}>
+        {text.label}
+      </p>
+      {off.map((reason) => (
+        <p key={reason} className="text-xs text-amber-400">
+          {reason}
+        </p>
+      ))}
+    </div>
   );
 }

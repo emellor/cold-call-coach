@@ -47,13 +47,32 @@ describe('loadConfig', () => {
   });
 
   it("refuses .env.example's development secret in production", () => {
-    const production = { NODE_ENV: 'production', DATABASE_URL: 'postgres://db/coach' };
+    const production = {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://db/coach',
+      APP_PASSWORD: 'correct horse battery',
+    };
     expect(() =>
       loadConfig({ ...production, INTERNAL_API_SECRET: DEV_INTERNAL_API_SECRET }),
     ).toThrowError(/INTERNAL_API_SECRET: is the development value/);
     expect(
       loadConfig({ ...production, INTERNAL_API_SECRET: 'a'.repeat(64) }).INTERNAL_API_SECRET,
     ).toHaveLength(64);
+  });
+
+  it('requires a password in production, and a secret to sign its sessions with', () => {
+    const production = { NODE_ENV: 'production', DATABASE_URL: 'postgres://db/coach' };
+    expect(() => loadConfig({ ...production, INTERNAL_API_SECRET: 'a'.repeat(64) })).toThrowError(
+      /APP_PASSWORD: is required in production/,
+    );
+    expect(() => loadConfig({ ...production, APP_PASSWORD: 'correct horse battery' })).toThrowError(
+      /INTERNAL_API_SECRET: is required with APP_PASSWORD/,
+    );
+    expect(() => loadConfig({ APP_PASSWORD: 'short' })).toThrowError(
+      /APP_PASSWORD: must be at least 8 characters/,
+    );
+    // Locally there is no sign-in unless a password is set.
+    expect(loadConfig({}).APP_PASSWORD).toBeUndefined();
   });
 });
 

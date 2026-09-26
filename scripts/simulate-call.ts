@@ -14,6 +14,7 @@ import { parseArgs } from 'node:util';
 import { ScenarioCatalog, type ScenarioSpec } from '@ccc/contracts';
 import { createClaude } from '../apps/agent/src/claude/client.ts';
 import { loadDotEnv } from '../apps/agent/src/config.ts';
+import { readPriceTable } from '../apps/api/src/prices.ts';
 import { type SimModels, type SimResult, type SimTurn, simulateCall } from './simulate/harness.ts';
 import { PERSONAS, type PersonaId } from './simulate/personas.ts';
 import { reviewSimulatedCall } from './simulate/review.ts';
@@ -165,6 +166,7 @@ async function main(): Promise<void> {
   const messages = createClaude(apiKey).beta.messages;
   const reviewModel = process.env.REVIEW_MODEL || 'claude-opus-5';
   const reviewEffort = effortFrom('REVIEW_EFFORT', 'high');
+  const prices = await readPriceTable();
   let reviewCostUsd = 0;
 
   console.log(
@@ -204,6 +206,7 @@ async function main(): Promise<void> {
                 messages,
                 model: reviewModel,
                 effort: reviewEffort,
+                prices,
                 scenario,
                 product,
                 rubric,

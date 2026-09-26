@@ -9,11 +9,19 @@ import type {
   LaneUsage,
   LoggedEvent,
   LoggedTurn,
+  PriceTable,
   ProspectState,
   RewindEventPayload,
   TimedWord,
 } from '@ccc/contracts';
-import { type MetricTurn, type TokenUsage, costUsd } from '@ccc/core';
+import {
+  type MetricTurn,
+  type TokenUsage,
+  costUsd,
+  roundUsd,
+  sttCostUsd,
+  ttsCostUsd,
+} from '@ccc/core';
 
 /** A word from a final STT result: seconds on the STT stream's own clock. */
 export interface SttWord {
@@ -43,15 +51,20 @@ const toMs = (seconds: number) => Math.round(seconds * 1000);
 
 export class CallRecorder {
   readonly #now: () => number;
+  /** Null: the price table couldn't be read, so nothing is priced. */
+  readonly #prices: PriceTable | null;
   #connectedAt: number | null = null;
   readonly #turns: RecordedTurn[] = [];
   readonly #events: LoggedEvent[] = [];
   readonly #latency: DebugLatencyPayload[] = [];
   readonly #usage: Partial<Record<Lane, Omit<LaneUsage, 'costUsd'>>> = {};
+  #stt: { model: string; audioMs: number } | undefined;
+  #tts: { model: string; characters: number } | undefined;
   #words: SttWord[] = [];
 
-  constructor(now: () => number = Date.now) {
+  constructor(now: () => number = Date.now, prices: PriceTable | null = null) {
     this.#now = now;
+    this.#prices = prices;
   }
 
   /** She picked up: every time in the log counts from here. */
@@ -177,10 +190,12 @@ export class CallRecorder {
     this.#latency.push(payload);
   }
 
-  usage(lane: Lane, model: string, usage: TokenUsage): void {
+  usage(lane: Lane, model: string, usage: TokenUsage, effort?: LaneUsage['effort']): void {
     const lane_ = (this.#usage[lane] ??= {
       model,
+      ...(effort ? { effort } : {}),
       calls: 0,
+      cachedCalls: 0,
       inputTokens: 0,
       cacheReadInputTokens: 0,
       cacheCreationInputTokens: 0,
@@ -188,10 +203,50 @@ export class CallRecorder {
     });
     lane_.model = model;
     lane_.calls += 1;
+    if (usage.cacheReadInputTokens > 0) lane_.cachedCalls = (lane_.cachedCalls ?? 0) + 1;
     lane_.inputTokens += usage.inputTokens;
     lane_.cacheReadInputTokens += usage.cacheReadInputTokens;
     lane_.cacheCreationInputTokens += usage.cacheCreationInputTokens;
     lane_.outputTokens += usage.outputTokens;
+  }
+
+  /** Audio streamed to Deepgram (LiveKit's STT metrics). */
+  stt(model: string, audioMs: number): void {
+    this.#stt = { model, audioMs: (this.#stt?.audioMs ?? 0) + audioMs };
+  }
+
+  /** Characters Cartesia spoke (LiveKit's TTS metrics). */
+  tts(model: string, characters: number): void {
+    this.#tts = { model, characters: (this.#tts?.characters ?? 0) + characters };
+  }
+
+  /** Every usage line as the call log carries it, priced from the table. */
+  #pricedUsage(): CallLog['usage'] {
+    const prices = this.#prices;
+    const usage: CallLog['usage'] = {};
+    for (const lane of LANES) {
+      const u = this.#usage[lane];
+      if (u) usage[lane] = { ...u, costUsd: prices ? costUsd(u.model, u, prices) : null };
+    }
+    if (this.#stt) {
+      const { model, audioMs } = this.#stt;
+      usage.stt = { model, audioMs, costUsd: prices ? sttCostUsd(model, audioMs, prices) : null };
+    }
+    if (this.#tts) {
+      const { model, characters } = this.#tts;
+      usage.tts = {
+        model,
+        characters,
+        costUsd: prices ? ttsCostUsd(model, characters, prices) : null,
+      };
+    }
+    return usage;
+  }
+
+  /** What the call has cost so far, of what could be priced. */
+  costSoFar(): number {
+    const lines = Object.values(this.#pricedUsage());
+    return roundUsd(lines.reduce((sum, line) => sum + (line?.costUsd ?? 0), 0));
   }
 
   build(end: {
@@ -203,11 +258,7 @@ export class CallRecorder {
     stateAfterRepTurn: (repTurn: number) => ProspectState | null;
   }): CallLog {
     const endedAt = end.at ?? this.#now();
-    const usage: CallLog['usage'] = {};
-    for (const lane of LANES) {
-      const u = this.#usage[lane];
-      if (u) usage[lane] = { ...u, costUsd: costUsd(u.model, u) };
-    }
+    const usage = this.#pricedUsage();
     return {
       outcome: end.outcome,
       ...(end.reason ? { reason: end.reason } : {}),

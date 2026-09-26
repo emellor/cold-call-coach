@@ -9,6 +9,9 @@ export interface PostLogger {
 const ATTEMPTS = 4;
 const TIMEOUT_MS = 10_000;
 
+/** Posted; refused by the API (a retry won't help); or the API couldn't be reached. */
+export type PostResult = 'posted' | 'rejected' | 'unreachable';
+
 /**
  * POSTs the call log to the API, retrying network failures and 5xx answers
  * with backoff (1 s, 2 s, 4 s). The API's upsert is idempotent, so a retry
@@ -22,7 +25,7 @@ export async function postCallLog(options: {
   logger: PostLogger;
   fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
-}): Promise<boolean> {
+}): Promise<PostResult> {
   const {
     apiBaseUrl,
     secret,
@@ -43,12 +46,12 @@ export async function postCallLog(options: {
       });
       if (res.ok) {
         logger.info({ callId, turns: log.turns.length, attempt }, 'call log posted');
-        return true;
+        return 'posted';
       }
       const detail = await res.text().catch(() => '');
       if (res.status < 500) {
         logger.error({ callId, status: res.status, detail }, 'the API rejected the call log');
-        return false;
+        return 'rejected';
       }
       logger.warn({ callId, status: res.status, attempt }, 'posting the call log failed; retrying');
     } catch (error) {
@@ -57,5 +60,5 @@ export async function postCallLog(options: {
     if (attempt < ATTEMPTS) await sleep(1000 * 2 ** (attempt - 1));
   }
   logger.error({ callId }, 'gave up posting the call log');
-  return false;
+  return 'unreachable';
 }

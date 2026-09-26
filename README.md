@@ -24,6 +24,25 @@ browser (apps/web) ⇄ LiveKit Cloud ⇄ voice agent (apps/agent) → Deepgram �
 - API keys for **Anthropic**, **Deepgram** and **Cartesia**.
 - A headset for calls. It avoids echo.
 
+## Keys
+
+Keys go in the repo-root `.env`, which git ignores, or in your host's secret settings.
+Never paste them into a chat, an issue or a commit. `.env.example` lists every variable.
+
+| Variable                                               | Used by                                                    | Where to get it                                |
+| ------------------------------------------------------ | ---------------------------------------------------------- | ---------------------------------------------- |
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | API (room tokens) and agent                                | LiveKit Cloud: your project → Settings → Keys  |
+| `ANTHROPIC_API_KEY`                                    | Agent (her replies, the judge, hints) and API (the review) | Claude Console → API keys                      |
+| `DEEPGRAM_API_KEY`                                     | Agent: hearing you                                         | Deepgram console → API keys                    |
+| `CARTESIA_API_KEY`                                     | Agent: her voice                                           | Cartesia → API keys                            |
+| `CARTESIA_VOICE_ID`                                    | Agent, for a scenario whose voice is still a placeholder   | Cartesia's voice library: a voice's ID         |
+| `INTERNAL_API_SECRET`                                  | API and agent, the same value on both                      | Any random string, e.g. `openssl rand -hex 32` |
+| `APP_PASSWORD`                                         | API, deployed only                                         | You choose it (8 characters or more)           |
+
+Locally, `INTERNAL_API_SECRET` can stay as `.env.example` has it and `APP_PASSWORD`
+empty, which means no sign-in. In production the API refuses to start with either one
+left like that.
+
 ## Run it
 
 ```bash
@@ -49,6 +68,12 @@ Without the LiveKit variables the agent prints what is missing and exits, and th
 and web keep running. With LiveKit but without a provider key, a call ends straight
 away and names the missing key.
 
+To run it the way it is deployed, as one process serving the API and the built SPA:
+
+```bash
+pnpm build && pnpm start    # http://localhost:3000
+```
+
 ## Scenarios
 
 Three prospects, all in [`scenarios/`](scenarios): **Priya Shah** (easy: curious and
@@ -62,8 +87,8 @@ day and time, and she agrees to meet.
 - **Voices.** Each scenario names its own Cartesia voice in `voice.voiceId`. They ship as
   `REPLACE_WITH_CARTESIA_VOICE_ID`, with a `hint` saying what to look for in Cartesia's
   library. Until you fill them in, `CARTESIA_VOICE_ID` in `.env` is used for all three.
-- **What you sell** is `scenarios/product.json`. The judge and (from M4) the review read
-  it; the prospect never does, so she only knows what you tell her.
+- **What you sell** is `scenarios/product.json`. The judge and the review read it; the
+  prospect never does, so she only knows what you tell her.
 - **Editing.** The API validates every file when it starts and refuses to boot on a bad
   one, naming the file and field. `pnpm test` checks them too. Bump a scenario's
   `version` when you change it meaningfully: calls record the version they were made
@@ -122,15 +147,138 @@ it can't find, so each criticism uses your actual words. **History** lists every
 with its outcome, score and length. A review needs `ANTHROPIC_API_KEY` on the API. Without
 one, the page says so, and **Try again** reruns the review once the key is set.
 
-`TURN_DETECTOR=audio` in `.env` swaps the plan's text-based turn detector for LiveKit's
-newer on-device audio model, which needs no download; the plugin now marks the text
-model deprecated. Try both with your headset and keep whichever feels more natural.
+## Cost per call
 
-To run it the way it is deployed, as one process serving the API and the built SPA:
+Every call is priced from what it used. The review page's **Cost** section shows it line
+by line, and **History** has a Cost column.
 
-```bash
-pnpm build && pnpm start    # http://localhost:3000
-```
+- **Claude**, per lane: her replies, the judge, your hints and the review. Input tokens,
+  cache writes, cache reads and output are each priced at their own rate.
+- **Deepgram**: the minutes of your audio it transcribed.
+- **Cartesia**: the characters she spoke.
+
+The prices are in `config/prices.json`, dated, with where each figure came from. Check
+them against your own plans, because Deepgram and Cartesia price differently per plan,
+and edit the file. The API and the agent read it when they start. A model the file
+doesn't list shows as "not priced", and the total gets a `+`.
+
+A call over **$2** (`warnAboveUsd` in the same file) is flagged three ways:
+
+- during the call, the agent tells you as soon as it passes the line;
+- the review page says so;
+- History marks it ⚠.
+
+Claude is most of the cost. Her replies and the judge run on every turn you take, so
+`PROSPECT_MODEL`, `COACH_MODEL` and their efforts matter most. The prompt cache makes
+every turn after the first cheaper. `PROSPECT_MODEL=claude-haiku-4-5` costs a fifth as
+much per token as Opus 5. The voice costs little by comparison: in the current table,
+Deepgram is $0.0077 a minute and Cartesia $0.05 per 1,000 characters.
+
+## Latency
+
+Her reply should start within 1.5 s of you finishing at p50, and within 2.5 s at p90.
+The **latency panel** under the transcript shows each reply's stages and a running p50:
+
+| Stage           | What it measures                                                      |
+| --------------- | --------------------------------------------------------------------- |
+| End of turn     | How long after you stopped the turn detector decided you had finished |
+| LLM first token | Claude's time to the first token of her reply                         |
+| TTS first byte  | Cartesia's time to her first audio                                    |
+| End to end      | From you stopping to her voice starting                               |
+
+Her reply streams: each sentence goes to Cartesia while Claude is still writing the next
+one, and a test holds the agent to that. Her prompt is marked for caching, so from the
+second turn on most of it should come from the cache; the report below shows whether it
+did.
+
+`pnpm report:latency` prints p50 and p90 for each stage over the logged calls, grouped
+by her model and effort, with cache hits and cost. It covers the 20 most recent calls
+by default; `--calls 50` and `--since 2026-09-26` change that.
+
+If replies are slow, the panel shows which stage is slow:
+
+- **End of turn**: try the other `TURN_DETECTOR`. `audio` is LiveKit's newer on-device
+  model and needs no download; `multilingual` is the plan's text model, which the plugin
+  now marks deprecated.
+- **LLM first token**: `PROSPECT_MODEL=claude-haiku-4-5` is the plan's latency lever.
+  `PROSPECT_EFFORT` is already at its lowest, `low`, and Haiku ignores it.
+- **TTS first byte**: this is Cartesia's time, and the app has nothing to tune.
+
+## When something fails
+
+- **A provider fails mid-call.** A notice under her video names it. A rejected key names
+  the variable to fix (`check DEEPGRAM_API_KEY`). Otherwise the notice says the provider
+  couldn't be reached, timed out or is rate-limiting you. If the call can't go on, it
+  ends and says why.
+- **Something isn't configured.** The header says what is off and what to set: "Calls
+  are off: set LIVEKIT_URL, … on the API", or "Reviews are off: set ANTHROPIC_API_KEY on
+  the API".
+- **Your connection drops.** LiveKit reconnects on its own and the call shows
+  **Reconnecting…** meanwhile. If the connection can't be restored, the call ends and
+  says so.
+- **The log always arrives.** However the call ends, the agent posts its log when the
+  call's job shuts down: her hang-up or yours, the 15-minute limit, a provider failure,
+  or the agent failing to set the call up. If the API is down at that moment, the log
+  waits on the agent's disk (`AGENT_SPOOL_DIR`) and goes with the next call.
+- **The agent dies mid-call.** A call that never reports back is marked failed once it is
+  20 minutes old (the API checks every 5 minutes), so History doesn't show it ringing
+  forever. If its log turns up later, the log wins.
+
+## Deploy to Render
+
+`render.yaml` is a Render Blueprint for three resources: the API and SPA as one web
+service, the agent as a background worker, and Postgres. LiveKit Cloud stays as it is.
+
+1. In Render, choose **New → Blueprint** and pick this repository.
+2. Fill in the secrets it asks for. The web service and the worker each ask for the
+   LiveKit trio and `ANTHROPIC_API_KEY`, because both use them. The web service also
+   asks for `APP_PASSWORD`; the worker asks for `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`
+   and `CARTESIA_VOICE_ID`. `INTERNAL_API_SECRET` is generated and shared with the
+   worker, and the database is wired in.
+3. Apply. Each deploy:
+   - installs with the pnpm version `package.json` pins;
+   - fetches the avatar;
+   - builds the SPA;
+   - runs the migrations (`preDeployCommand`);
+   - starts the service, with `/api/health` as its health check.
+4. Open the web service's URL and sign in with `APP_PASSWORD`.
+
+Things to know:
+
+- **Plans.** The web service runs on Starter, the worker on Standard and Postgres on
+  Basic-256mb. Workers have no free plan, and the pre-deploy migration needs a paid
+  instance. The worker needs Standard's 2 GB: in production LiveKit keeps up to four
+  job processes warm, which measured about 1.3 GB at rest.
+- **Region.** All three run in Frankfurt, Render's nearest region to UK callers. They
+  must share a region, because the worker reaches the API, and the API reaches Postgres,
+  over Render's private network. The worker gets the API's private address as
+  `API_HOSTPORT`.
+- **Turn detector.** The worker uses `TURN_DETECTOR=audio`. That model is compiled into
+  its package, whereas the text model is downloaded into `~/.cache`, outside the project.
+- **Sign-in.** `APP_PASSWORD` is traded for a signed, http-only cookie. It lasts 30
+  days and is `Secure` and `SameSite=Lax`.
+  - Every `/api` route except health and sign-in needs the cookie, so only a signed-in
+    browser gets LiveKit tokens.
+  - Ten wrong passwords from one address lock it out until 15 minutes after the first.
+  - Changing `APP_PASSWORD` or `INTERNAL_API_SECRET` signs everyone out.
+  - To try the sign-in locally, set `APP_PASSWORD` in `.env`.
+
+The Blueprint hasn't been applied on Render yet. Its build, pre-deploy and start
+commands were run locally in production mode, against a local LiveKit server.
+
+## Troubleshooting
+
+| Symptom                                                  | What to do                                                                                                                                                                   |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| She talks over herself, or answers her own words         | Echo: her voice is reaching your microphone from your speakers. Use a headset.                                                                                               |
+| No 3D avatar, and the page says "The avatar didn't load" | Run `pnpm avatar:fetch` and reload. Calls work without it, and on Render the build fetches it.                                                                               |
+| You can't hear her                                       | Click the page or press a key: browsers start audio only once you interact, and during a call every click retries it. Check the tab isn't muted and the site may play sound. |
+| Her replies are slow                                     | Open the latency panel to see which stage is slow, then see [Latency](#latency).                                                                                             |
+| "Calls are off" or "Reviews are off" in the header       | Set the variables it names on the API and restart the API.                                                                                                                   |
+| A red notice: "… rejected the agent's key: check …"      | Fix that variable where the agent runs and restart the agent.                                                                                                                |
+| The call ends straight away                              | The ending names what is missing: a key, or a voice for the scenario.                                                                                                        |
+| You're asked to sign in again                            | The session is 30 days old, or `APP_PASSWORD` or `INTERNAL_API_SECRET` changed.                                                                                              |
+| "Too many wrong passwords"                               | Wait up to 15 minutes.                                                                                                                                                       |
 
 ## Checks
 

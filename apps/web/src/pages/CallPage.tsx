@@ -8,7 +8,7 @@ import { AvatarStage } from '../avatar/AvatarStage.tsx';
 import { AvatarStore } from '../avatar/avatarStore.ts';
 import { DEV_MOODS, type Mood } from '../avatar/config.ts';
 import { CoachPanel } from '../call/CoachPanel.tsx';
-import { HintCard, NoticeLine, TipCard } from '../call/cards.tsx';
+import { AgentNotices, HintCard, NoticeLine, TipCard } from '../call/cards.tsx';
 import { DialButton, LiveControls, ModeChoice } from '../call/controls.tsx';
 import { type CallView, REVIEW_REDIRECT_MS, reviewPathAfter, useCall } from '../call/useCall.ts';
 import { useCallMode } from '../call/useCallMode.ts';
@@ -31,7 +31,8 @@ export function CallPage() {
   const [phoneMode, setPhoneMode] = usePersistentFlag('ccc.phoneMode', false);
   const [lipSyncDelay, setLipSyncDelay] = usePersistentFlag('ccc.lipSyncDelay', false);
   const [devMood, setDevMood] = useState<Mood>('neutral');
-  const { view, dial, hangUp, togglePause, hint, dismissHint, rewind } = useCall();
+  const { view, dial, hangUp, togglePause, hint, dismissHint, rewind, dismissAgentNotice } =
+    useCall();
   const [mode, setMode] = useCallMode();
   const live = isLive(view.phase);
   const coached = live && view.mode === 'coached';
@@ -67,6 +68,19 @@ export function CallPage() {
   // Her face follows her mood; each call starts neutral.
   const mood = view.prospect?.mood ?? 'neutral';
   useEffect(() => controller?.setMood(mood), [controller, mood]);
+
+  // If the browser held her audio back anyway (the avatar loaded after Dial, or a
+  // stricter autoplay policy), any click or key during the call starts it.
+  useEffect(() => {
+    if (!live || !controller) return;
+    const resume = () => controller.resumeAudio();
+    document.addEventListener('pointerdown', resume);
+    document.addEventListener('keydown', resume);
+    return () => {
+      document.removeEventListener('pointerdown', resume);
+      document.removeEventListener('keydown', resume);
+    };
+  }, [live, controller]);
 
   const onDial = () => {
     if (!selected) return;
@@ -145,6 +159,7 @@ export function CallPage() {
                 </div>
               )}
             </AvatarStage>
+            <AgentNotices notices={view.agentNotices} onDismiss={dismissAgentNotice} />
             {coached ? (
               <CoachPanel coach={view.coach} />
             ) : (
@@ -264,6 +279,16 @@ function Toggle(props: { label: string; checked: boolean; onChange: (value: bool
 
 function StatusChip({ view, prospect }: { view: CallView; prospect: string }) {
   const chip = 'rounded-full bg-slate-950/70 px-3 py-1 text-sm backdrop-blur-sm';
+  if (view.reconnecting && isLive(view.phase)) {
+    return (
+      <p
+        role="status"
+        className={`${chip} animate-pulse text-amber-300 motion-reduce:animate-none`}
+      >
+        Reconnecting…
+      </p>
+    );
+  }
   switch (view.phase) {
     case 'idle':
     case 'ended':

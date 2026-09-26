@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { AppHeader } from '../components/AppHeader.tsx';
 import { rerunReview } from '../lib/api.ts';
+import { CostSection } from './CostSection.tsx';
 import { Scorecard } from './Scorecard.tsx';
 import { OUTCOME_LABELS, OUTCOME_TONE, STAGE_LABELS, dateTime, duration } from './format.ts';
 import { useCallDetail } from './useCallDetail.ts';
@@ -267,6 +268,8 @@ function Loaded(props: {
           />
         </section>
       )}
+
+      {detail.cost && detail.cost.lines.length > 0 && <CostSection cost={detail.cost} />}
 
       {review?.status === 'ready' && (
         <footer className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">

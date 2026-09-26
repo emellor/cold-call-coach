@@ -8,7 +8,7 @@ import {
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { AppDeps } from '../app.ts';
+import type { AppContext } from '../app.ts';
 import { getCallDetail, listCalls } from '../calls/store.ts';
 import { liveKitConfig } from '../config.ts';
 import { LOCAL_USER_ID, calls } from '../db/schema.ts';
@@ -20,14 +20,17 @@ const CallParams = z.object({ id: z.uuid() });
 
 export function registerCallRoutes(
   app: FastifyInstance,
-  { config, db }: AppDeps,
+  { config, db, prices }: AppContext,
   queue: ReviewQueue,
 ): void {
-  app.get('/api/calls', async () => CallListResponse.parse({ calls: await listCalls(db) }));
+  const { warnAboveUsd } = prices;
+  app.get('/api/calls', async () =>
+    CallListResponse.parse({ calls: await listCalls(db, warnAboveUsd) }),
+  );
 
   app.get('/api/calls/:id', async (request, reply) => {
     const { id } = CallParams.parse(request.params);
-    const detail = await getCallDetail(db, id);
+    const detail = await getCallDetail(db, id, warnAboveUsd);
     if (!detail) return reply.code(404).send({ error: `Unknown call: ${id}` });
     return CallDetail.parse(detail);
   });

@@ -9,7 +9,7 @@ import type {
   BetaStopReason,
   MessageCreateParamsStreaming,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages';
-import { ReviewDraft } from '@ccc/contracts';
+import { type PriceTable, ReviewDraft } from '@ccc/contracts';
 import {
   type Effort,
   type ReviewPromptInput,
@@ -138,9 +138,11 @@ export function claudeReviewer(options: {
   messages: StreamingMessages;
   model: string;
   effort: Effort;
+  /** Prices the review's tokens (config/prices.json). */
+  prices: PriceTable;
   timeoutMs?: number;
 }): Reviewer {
-  const { messages, model, effort, timeoutMs = REVIEW_TIMEOUT_MS } = options;
+  const { messages, model, effort, prices, timeoutMs = REVIEW_TIMEOUT_MS } = options;
   return async (input) => {
     let streamed: Streamed;
     try {
@@ -167,7 +169,7 @@ export function claudeReviewer(options: {
       draft,
       model: streamed.model,
       usage: streamed.usage,
-      costUsd: costUsd(streamed.model, streamed.usage),
+      costUsd: costUsd(streamed.model, streamed.usage, prices),
     };
   };
 }
