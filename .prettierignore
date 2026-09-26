@@ -1,0 +1,7 @@
+pnpm-lock.yaml
+node_modules/
+dist/
+coverage/
+apps/web/public/
+# The plan and prompts are kept exactly as written.
+docs/
