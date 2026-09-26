@@ -27,9 +27,16 @@ export class ApiRequestError extends Error {
 export const SIGNED_OUT_EVENT = 'ccc:signed-out';
 
 async function send(url: string, init: RequestInit = {}): Promise<Response> {
+  // Only a request with a body is labelled JSON: the API refuses an empty body
+  // labelled JSON with a 400, which kept sign-out and review reruns from running.
+  const hasBody = init.body !== undefined && init.body !== null;
   const res = await fetch(url, {
     ...init,
-    headers: { accept: 'application/json', 'content-type': 'application/json', ...init.headers },
+    headers: {
+      accept: 'application/json',
+      ...(hasBody ? { 'content-type': 'application/json' } : {}),
+      ...init.headers,
+    },
   });
   if (res.status === 401 && !url.startsWith('/api/auth/')) {
     window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
