@@ -1,14 +1,15 @@
 import type { ScenarioSummary } from '@ccc/contracts';
 import { RoomContext, StartAudio, useVoiceAssistant } from '@livekit/components-react';
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { Link, useLocation } from 'wouter';
 import { AgentAudio } from '../avatar/AgentAudio.tsx';
+import { AppHeader } from '../components/AppHeader.tsx';
 import { AvatarStage } from '../avatar/AvatarStage.tsx';
 import { AvatarStore } from '../avatar/avatarStore.ts';
 import { DEV_MOODS, type Mood } from '../avatar/config.ts';
-import { type CallView, useCall } from '../call/useCall.ts';
+import { type CallView, REVIEW_REDIRECT_MS, reviewPathAfter, useCall } from '../call/useCall.ts';
 import { PhoneIcon, PhoneOffIcon } from '../components/icons.tsx';
 import { LatencyPanel } from '../components/LatencyPanel.tsx';
-import { SystemStatus } from '../components/SystemStatus.tsx';
 import { Transcript } from '../components/Transcript.tsx';
 import { formatClock } from '../lib/stats.ts';
 import { usePersistentFlag, usePersistentString } from '../lib/usePersistentFlag.ts';
@@ -28,6 +29,15 @@ export function CallPage() {
   const [devMood, setDevMood] = useState<Mood>('neutral');
   const { view, dial, hangUp } = useCall();
   const live = isLive(view.phase);
+
+  // Once a call she answered is over, its review is the next thing to see.
+  const [, navigate] = useLocation();
+  const reviewPath = reviewPathAfter(view);
+  useEffect(() => {
+    if (!reviewPath) return;
+    const timer = window.setTimeout(() => navigate(reviewPath), REVIEW_REDIRECT_MS);
+    return () => window.clearTimeout(timer);
+  }, [reviewPath, navigate]);
 
   const scenarios = useScenarios();
   const [chosenId, setChosenId] = usePersistentString('ccc.scenario');
@@ -54,10 +64,7 @@ export function CallPage() {
   return (
     <RoomContext.Provider value={view.room}>
       <div className="flex min-h-dvh flex-col">
-        <header className="flex items-center justify-between border-b border-slate-800 px-6 py-3">
-          <h1 className="text-lg font-semibold tracking-tight">Cold Call Coach</h1>
-          <SystemStatus />
-        </header>
+        <AppHeader />
 
         <main className="grid flex-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_380px]">
           <section aria-label="Call" className="flex min-w-0 flex-col gap-3">
@@ -85,6 +92,14 @@ export function CallPage() {
                 >
                   <p className="font-medium">Call ended</p>
                   {view.message && <p className="mt-1 text-sm text-slate-300">{view.message}</p>}
+                  {reviewPath && (
+                    <Link
+                      href={reviewPath}
+                      className="mt-2 inline-block text-sm text-sky-300 underline"
+                    >
+                      See your review
+                    </Link>
+                  )}
                 </div>
               )}
             </AvatarStage>

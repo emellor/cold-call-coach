@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NO_ANSWER_MS, describeOutcome, useCall } from './useCall.ts';
+import { NO_ANSWER_MS, describeOutcome, reviewPathAfter, useCall } from './useCall.ts';
 
 const fakes = vi.hoisted(() => {
   type Handler = (reader: { readAll(): Promise<string> }, info: { identity: string }) => unknown;
@@ -253,5 +253,17 @@ describe('describeOutcome', () => {
       'The 15-minute call limit was reached.',
     );
     expect(describeOutcome('error')).toBe('The call failed.');
+  });
+});
+
+describe('reviewPathAfter', () => {
+  const base = { latency: [], callId: 'c1' };
+  it('goes to the review once a call she answered has ended', () => {
+    expect(reviewPathAfter({ ...base, phase: 'ended', connectedAt: 1 })).toBe('/calls/c1');
+  });
+  it('stays put for a live call, or one she never answered', () => {
+    expect(reviewPathAfter({ ...base, phase: 'connected', connectedAt: 1 })).toBeNull();
+    expect(reviewPathAfter({ ...base, phase: 'ended' })).toBeNull();
+    expect(reviewPathAfter({ latency: [], phase: 'ended', connectedAt: 1 })).toBeNull();
   });
 });

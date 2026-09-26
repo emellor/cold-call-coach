@@ -60,6 +60,7 @@ pnpm test -t "health"       # filter by name
 
 pnpm --filter @ccc/agent download-files   # fetch the agent's model files (turn detector, VAD)
 pnpm simulate --help        # text-only persona regression; spends Claude tokens, run by hand
+pnpm simulate --persona good --runs 1 --review   # …plus a real post-call review
 ```
 
 ## How the code runs
@@ -135,6 +136,42 @@ pnpm simulate --help        # text-only persona regression; spends Claude tokens
   stage and fact keys unconstrained. A failed or timed-out judgement applies no signals.
 - **`scripts/simulate-call.ts`** drives the same brain, request builders and tools with
   Claude as the rep (`scripts/simulate/`); its harness is unit-tested with a fake Claude.
+
+## The call log and the review (M4)
+
+- **The agent records the call** in `CallRecorder` (`apps/agent/src/log/`): each committed
+  turn with times in ms since she picked up (from LiveKit's speaking metrics), the rep's
+  word timings, events (judgements, tool calls, meeting decisions, the outcome), latency and
+  Claude usage per lane. Word timings come from `ProspectAgent.sttNode`, which taps the
+  default node's final transcripts (`tapFinalWords`). Deepgram times words on the STT
+  stream's own clock, which LiveKit doesn't expose, so each turn's words are pinned to the
+  turn's VAD start; gaps within a turn stay exact.
+- **The log is posted from a job shutdown callback**, so every ending posts it: her
+  hang-up, the rep's, the time limit, an error. `failCall` posts a minimal log too when it
+  can reach the API. `postCallLog` retries network errors and 5xx (1 s, 2 s, 4 s) and never
+  throws.
+- **`POST /internal/calls/:id/log` replaces the call's log in one transaction**: the call
+  columns, then turns and events deleted and re-inserted. Posting twice leaves the same
+  rows, and `callLog.route.test.ts` proves it against Postgres. A review is queued only if
+  the call has none yet or the last one failed.
+- **The review queue** (`apps/api/src/review/queue.ts`) is in-process and runs one review
+  at a time. It resumes unfinished reviews at boot. Metrics come from
+  `core/metrics/computeMetrics` (§8.1, pure), and the prompt from `core/review/prompt.ts`.
+  The Claude call (`reviewer.ts`) streams raw events (`create` with `stream: true`: the SDK's
+  stream helper parses the JSON itself and would hide a refusal or a `max_tokens` cut behind a
+  parse error), on `REVIEW_MODEL`/`REVIEW_EFFORT`, with
+  structured output as `ReviewDraft`. `finalizeReview` then runs `validateQuotes`: each
+  quote must appear in the cited turn (or another turn, which then gets cited), ignoring
+  case, punctuation and whitespace. Items whose quote can't be found are dropped and
+  counted in `quotesDropped`. Scores are clamped, stages come in rubric order, and cost is
+  priced with `core/claude/pricing.ts`.
+- **Turn numbers in reviews count from 1** (`LoggedTurn.idx + 1`), matching the numbered
+  transcript the reviewer sees and the page's `#turn-N` anchors.
+- **Structured outputs** use `core/claude/structuredOutput.ts`, not the SDK's zod helper.
+  It keeps `enum` and `const` as real constraints, and it moves the number and length
+  bounds the API rejects into the description; zod enforces them on parse.
+- **The web** moves to `/calls/:id` 1.5 s after a call she answered ends. That page polls
+  every 2 s until the review settles, for up to 5 minutes. `/calls` is the history.
 
 ## The avatar (apps/web/src/avatar)
 

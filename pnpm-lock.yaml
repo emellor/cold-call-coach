@@ -101,9 +101,15 @@ importers:
 
   apps/api:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.128.0
+        version: 0.128.0(zod@4.6.5)
       '@ccc/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@ccc/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@fastify/static':
         specifier: ^10.1.5
         version: 10.1.5
@@ -190,6 +196,9 @@ importers:
       '@ccc/contracts':
         specifier: workspace:*
         version: link:../contracts
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
 
 packages:
 

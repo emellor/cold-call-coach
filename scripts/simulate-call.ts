@@ -6,6 +6,7 @@
 //   pnpm simulate                          # medium scenario, 5 runs per rep
 //   pnpm simulate --scenario all --transcript
 //   pnpm simulate --persona good --runs 3 --turns 12
+//   pnpm simulate --persona good --runs 1 --review   # plus the post-call review
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +16,7 @@ import { createClaude } from '../apps/agent/src/claude/client.ts';
 import { loadDotEnv } from '../apps/agent/src/config.ts';
 import { type SimModels, type SimResult, type SimTurn, simulateCall } from './simulate/harness.ts';
 import { PERSONAS, type PersonaId } from './simulate/personas.ts';
+import { reviewSimulatedCall } from './simulate/review.ts';
 
 const USAGE = `Usage: pnpm simulate [options]
 
@@ -24,6 +26,8 @@ const USAGE = `Usage: pnpm simulate [options]
   --turns <n>                  Rep turns before giving up (default 20)
   --concurrency <n>            Runs in flight at once (default 5)
   --transcript                 Print every line of every call
+  --review                     Run the post-call review on each call and print the result
+                               (REVIEW_MODEL / REVIEW_EFFORT; a high-effort call each)
 
 Reads ANTHROPIC_API_KEY, PROSPECT_MODEL/EFFORT and COACH_MODEL/EFFORT from .env;
 SIM_REP_MODEL picks the model that plays the rep (default claude-opus-5).
@@ -126,6 +130,7 @@ async function main(): Promise<void> {
       turns: { type: 'string', default: '20' },
       concurrency: { type: 'string', default: '5' },
       transcript: { type: 'boolean', default: false },
+      review: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });
@@ -158,6 +163,9 @@ async function main(): Promise<void> {
     coachEffort: effortFrom('COACH_EFFORT', 'low'),
   };
   const messages = createClaude(apiKey).beta.messages;
+  const reviewModel = process.env.REVIEW_MODEL || 'claude-opus-5';
+  const reviewEffort = effortFrom('REVIEW_EFFORT', 'high');
+  let reviewCostUsd = 0;
 
   console.log(
     `Prospect ${models.prospect} (${models.prospectEffort}), judge ${models.coach} (${models.coachEffort}), rep ${models.rep}.\n` +
@@ -181,14 +189,38 @@ async function main(): Promise<void> {
             models,
             maxTurns,
           });
-          console.log(
+          const lines = [
             report(
               result,
               `${scenario.id} × ${persona.label}, run ${i + 1}/${runs}`,
               values.transcript,
             ),
-            '\n',
-          );
+          ];
+          if (values.review) {
+            const rubric = catalog.rubrics.find((r) => r.id === scenario.rubricId);
+            if (!rubric) fail(`No rubric "${scenario.rubricId}".`);
+            try {
+              const reviewed = await reviewSimulatedCall({
+                messages,
+                model: reviewModel,
+                effort: reviewEffort,
+                scenario,
+                product,
+                rubric,
+                result,
+              });
+              reviewCostUsd += reviewed.costUsd ?? 0;
+              lines.push(
+                `  review (${reviewed.model}, $${(reviewed.costUsd ?? 0).toFixed(4)}, ${reviewed.dropped.length} quote(s) dropped):`,
+                JSON.stringify(reviewed.review, null, 2),
+              );
+            } catch (error) {
+              lines.push(
+                `  review failed: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            }
+          }
+          console.log(lines.join('\n'), '\n');
           return result;
         }),
         concurrency,
@@ -212,6 +244,7 @@ async function main(): Promise<void> {
   console.log(
     `\nClaude usage: ${totals.calls} calls, ${totals.inputTokens} input tokens (${totals.cacheReadInputTokens} from cache), ${totals.outputTokens} output tokens.`,
   );
+  if (values.review) console.log(`Reviews: $${reviewCostUsd.toFixed(4)} in total.`);
   console.log(passed ? '\nPASS' : '\nFAIL');
   process.exitCode = passed ? 0 : 1;
 }

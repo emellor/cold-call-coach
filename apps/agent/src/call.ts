@@ -1,5 +1,5 @@
 import { type CallOutcome, type CallPhase, MAX_CALL_SECONDS, Topics } from '@ccc/contracts';
-import type { Logger } from './log.ts';
+import type { Logger } from './logger.ts';
 import type { Publisher } from './publisher.ts';
 
 /** How long the phone rings before she picks up (PLAN.md §5, step 3). */
@@ -19,6 +19,16 @@ export interface CallControllerDeps {
   logger: Logger;
   openingLine: string;
   random?: () => number;
+  /** She has just picked up (before `connected` is published). */
+  onConnected?: () => void;
+}
+
+/** How the call ended: the outcome, why, which side ended it, and when (epoch ms). */
+export interface CallEnding {
+  outcome: CallOutcome;
+  reason?: string;
+  endedBy: CallOutcome;
+  at: number;
 }
 
 /**
@@ -32,6 +42,7 @@ export class CallController {
   readonly #stop = new AbortController();
   #phase: CallPhase = 'ringing';
   #ending: Promise<void> | undefined;
+  #ended: CallEnding | undefined;
   #meeting: string | undefined;
 
   constructor(deps: CallControllerDeps) {
@@ -40,6 +51,11 @@ export class CallController {
 
   get phase(): CallPhase {
     return this.#phase;
+  }
+
+  /** Set once the call has ended. */
+  get ended(): CallEnding | undefined {
+    return this.#ended;
   }
 
   /** She agreed to a meeting and the rules let it stand; the call carries on. */
@@ -64,6 +80,7 @@ export class CallController {
     if (this.#phase !== 'ringing') return;
 
     this.#phase = 'connected';
+    this.#deps.onConnected?.();
     session.input.setAudioEnabled(true);
     await publisher.publish(Topics.callState, { phase: 'connected' });
     session.say(openingLine);
@@ -85,6 +102,7 @@ export class CallController {
     this.#stop.abort();
     const outcome = this.#meeting === undefined ? endedBy : 'meeting_booked';
     const reason = this.#meeting ?? why;
+    this.#ended = { outcome, ...(reason ? { reason } : {}), endedBy, at: Date.now() };
     await this.#deps.publisher.publish(Topics.callState, {
       phase: 'ended',
       outcome,

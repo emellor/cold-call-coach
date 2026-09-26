@@ -1,8 +1,11 @@
 import {
   ApiError,
+  CallDetail,
+  CallListResponse,
   type CreateCallRequest,
   CreateCallResponse,
   HealthResponse,
+  ReviewRerunResponse,
   ScenarioListResponse,
 } from '@ccc/contracts';
 import type { z } from 'zod';
@@ -51,4 +54,21 @@ export function createCall(body: CreateCallRequest): Promise<CreateCallResponse>
 /** `GET /api/scenarios`: what the picker offers, easiest first. */
 export function fetchScenarios(signal?: AbortSignal): Promise<ScenarioListResponse> {
   return request(ScenarioListResponse, '/api/scenarios', { signal });
+}
+
+/** `GET /api/calls`: the call history, newest first. */
+export function fetchCalls(signal?: AbortSignal): Promise<CallListResponse> {
+  return request(CallListResponse, '/api/calls', { signal });
+}
+
+/** `GET /api/calls/:id`: transcript, metrics and review. */
+export function fetchCall(id: string, signal?: AbortSignal): Promise<CallDetail> {
+  return request(CallDetail, `/api/calls/${encodeURIComponent(id)}`, { signal });
+}
+
+/** `POST /api/calls/:id/review/rerun` */
+export function rerunReview(id: string): Promise<ReviewRerunResponse> {
+  return request(ReviewRerunResponse, `/api/calls/${encodeURIComponent(id)}/review/rerun`, {
+    method: 'POST',
+  });
 }

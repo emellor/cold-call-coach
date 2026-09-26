@@ -80,3 +80,28 @@ describe('actOnReply', () => {
     expect(calls).toEqual([]);
   });
 });
+
+describe('actOnReply, for the call log', () => {
+  it('records each tool call and the meeting decision', async () => {
+    const { deps } = setup({ booked: false, reason: 'the rep never asked for a meeting' });
+    const record = vi.fn();
+    await actOnReply(
+      reply({
+        actions: [
+          { type: 'agree_to_meeting', when: 'Tue 10' },
+          { type: 'end_call', reason: 'Busy' },
+        ],
+      }),
+      3,
+      { ...deps, record },
+    );
+    expect(record.mock.calls).toEqual([
+      ['tool_call', { turn: 3, name: 'agree_to_meeting', when: 'Tue 10' }],
+      [
+        'meeting',
+        { turn: 3, when: 'Tue 10', booked: false, reason: 'the rep never asked for a meeting' },
+      ],
+      ['tool_call', { turn: 3, name: 'end_call', reason: 'Busy' }],
+    ]);
+  });
+});

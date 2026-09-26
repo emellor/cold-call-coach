@@ -3,10 +3,11 @@ import type {
   BetaMessageStreamParams,
   BetaRawMessageStreamEvent,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages';
-import { initializeLogger, llm, log } from '@livekit/agents';
-import { describe, expect, it } from 'vitest';
+import { ReadableStream } from 'node:stream/web';
+import { initializeLogger, llm, log, stt } from '@livekit/agents';
+import { describe, expect, it, vi } from 'vitest';
 import type { StreamingMessages } from '../claude/textStream.ts';
-import { ProspectAgent } from './agent.ts';
+import { ProspectAgent, tapFinalWords } from './agent.ts';
 import { REPLY_ID_KEY, ReplyLedger } from './replies.ts';
 
 initializeLogger({ pretty: false, level: 'silent' });
@@ -48,6 +49,7 @@ async function reply(options: {
   events?: BetaRawMessageStreamEvent[];
   final?: Partial<BetaMessage>;
   hangUpDue?: boolean;
+  onUsage?: (model: string, usage: unknown) => void;
 }) {
   const { claude, sent } = fakeClaude(options.events ?? [textDelta('Go on.')], options.final ?? {});
   const ledger = new ReplyLedger();
@@ -59,6 +61,7 @@ async function reply(options: {
     brain: { note: () => NOTE, hangUpDue: options.hangUpDue ?? false },
     ledger,
     logger: log(),
+    onUsage: options.onUsage,
   });
   const chatCtx = llm.ChatContext.empty();
   chatCtx.addMessage({ role: 'assistant', content: 'Claire Hughes.' });
@@ -141,5 +144,57 @@ describe('ProspectAgent.llmNode', () => {
       forcedGoodbye: true,
       actions: [{ type: 'end_call', reason: 'Wasting my time' }],
     });
+  });
+});
+
+describe('the call log hooks', () => {
+  it('reports each finished reply’s usage', async () => {
+    const onUsage = vi.fn();
+    await reply({ model: 'claude-opus-5', onUsage });
+    expect(onUsage).toHaveBeenCalledWith('claude-opus-5', {
+      inputTokens: 1,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      outputTokens: 1,
+    });
+  });
+
+  it('copies final transcripts’ word timings aside and passes every event on', async () => {
+    const word = (text: string, startTime: number, endTime: number) =>
+      ({ text, startTime, endTime }) as never;
+    const events: stt.SpeechEvent[] = [
+      {
+        type: stt.SpeechEventType.INTERIM_TRANSCRIPT,
+        alternatives: [{ text: 'Hi', words: [word('Hi', 1, 1.2)] } as never],
+      },
+      {
+        type: stt.SpeechEventType.FINAL_TRANSCRIPT,
+        alternatives: [
+          { text: 'Hi Claire', words: [word('Hi', 1, 1.2), word('Claire', 1.3, 1.7)] } as never,
+        ],
+      },
+      { type: stt.SpeechEventType.END_OF_SPEECH },
+    ];
+    const onFinal = vi.fn();
+    const tapped = tapFinalWords(
+      new ReadableStream<stt.SpeechEvent | string>({
+        start(controller) {
+          for (const event of events) controller.enqueue(event);
+          controller.close();
+        },
+      }),
+      onFinal,
+    );
+    const seen: Array<stt.SpeechEvent | string> = [];
+    for await (const event of tapped) seen.push(event);
+    expect(seen).toEqual(events);
+    expect(onFinal.mock.calls).toEqual([
+      [
+        [
+          { text: 'Hi', startTime: 1, endTime: 1.2 },
+          { text: 'Claire', startTime: 1.3, endTime: 1.7 },
+        ],
+      ],
+    ]);
   });
 });

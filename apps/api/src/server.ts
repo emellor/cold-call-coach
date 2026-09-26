@@ -44,6 +44,8 @@ const sync = async (): Promise<void> => {
       { scenarios: catalog.scenarios.map((s) => `${s.id}@${s.version}`) },
       'scenarios synced',
     );
+    const resumed = await app.reviewQueue.resumeUnfinished();
+    if (resumed) app.log.info({ resumed }, 'resumed unfinished reviews');
   } catch (error) {
     app.log.error(
       { err: error },

@@ -3,7 +3,7 @@ import { HANG_UP_INSTRUCTION, type TranscriptTurn } from '@ccc/core';
 import { describe, expect, it, vi } from 'vitest';
 import type { Judge } from '../judge/judge.ts';
 import { judged, product, scenario, silentLogger } from '../test/fixtures.ts';
-import { NO_JUDGEMENT, ProspectBrain } from './brain.ts';
+import { type JudgedTurn, NO_JUDGEMENT, ProspectBrain } from './brain.ts';
 
 const calm = { longestMonologueSec: 10 };
 const talk = (...lines: string[]): TranscriptTurn[] =>
@@ -69,6 +69,23 @@ describe('ProspectBrain', () => {
       { turn: 2, mood: 'neutral', interest: 36, patience: 59 },
     ]);
     expect(brain.note()).toContain('Private facts you may now discuss: energy bills up about 40%');
+  });
+
+  it('reports every judgement in full, for the call log', async () => {
+    const onJudged = vi.fn();
+    const brain = new ProspectBrain({
+      scenario,
+      product,
+      judge: () => Promise.resolve(judged({ gaveRelevantReason: true }, { stage: 'reason' })),
+      logger: silentLogger,
+      onJudged,
+    });
+    brain.repTurn(talk('Claire Hughes.', 'Energy bills keep FDs up at night.'), calm);
+    await brain.settled();
+    expect(onJudged).toHaveBeenCalledOnce();
+    const [record] = onJudged.mock.calls[0] as [JudgedTurn];
+    expect(record).toMatchObject({ turn: 1, judged: true, judge: { stage: 'reason' } });
+    expect([record.before.interest, record.after.interest]).toEqual([20, 30]);
   });
 
   it('still costs her patience when the judge fails, and says so in the history', async () => {

@@ -1,4 +1,4 @@
-import type { CallOutcome } from '@ccc/contracts';
+import type { CallOutcome, EventKind } from '@ccc/contracts';
 import type { MeetingDecision } from './brain.ts';
 import type { Reply } from './replies.ts';
 
@@ -9,6 +9,8 @@ export interface ActionDeps {
     end(outcome: CallOutcome, reason?: string): Promise<void>;
   };
   logger: { info(obj: object, msg: string): void };
+  /** Keeps what happened for the call log. */
+  record?: (kind: EventKind, payload: Record<string, unknown>) => void;
 }
 
 /** The reason shown to the rep when she hangs up because her patience ran out. */
@@ -20,20 +22,24 @@ export const OUT_OF_PATIENCE = 'Out of patience';
  * asked for it or her note had already told her to go.
  */
 export async function actOnReply(reply: Reply, turn: number, deps: ActionDeps): Promise<void> {
-  const { brain, controller, logger } = deps;
+  const { brain, controller, logger, record } = deps;
   for (const action of reply.actions) {
     if (action.type !== 'agree_to_meeting') continue;
+    record?.('tool_call', { turn, name: 'agree_to_meeting', when: action.when });
     const decision = await brain.agreeToMeeting(action.when, turn);
     logger.info({ turn, when: action.when, ...decision }, 'agree_to_meeting');
+    record?.('meeting', { turn, when: action.when, ...decision });
     if (decision.booked) await controller.recordMeeting(decision.when);
   }
 
   const endCall = reply.actions.find((a) => a.type === 'end_call');
   if (endCall) {
     logger.info({ turn, reason: endCall.reason }, 'end_call');
+    record?.('tool_call', { turn, name: 'end_call', reason: endCall.reason });
     await controller.end('hung_up_by_prospect', endCall.reason);
   } else if (reply.forcedGoodbye) {
     logger.info({ turn }, 'out of patience; ending the call after her goodbye');
+    record?.('tool_call', { turn, name: 'forced_goodbye' });
     await controller.end('hung_up_by_prospect', OUT_OF_PATIENCE);
   }
 }
