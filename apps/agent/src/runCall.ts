@@ -13,7 +13,7 @@ import * as deepgram from '@livekit/agents-plugin-deepgram';
 import { CallController } from './call.ts';
 import { chatContextToTurns, repSpeakingSeconds } from './chat.ts';
 import { createClaude } from './claude/client.ts';
-import { type CallConfig, readCallConfig } from './config.ts';
+import { type CallConfig, describeMissingCallConfig, readCallConfig } from './config.ts';
 import { claudeHints } from './coach/hint.ts';
 import { LiveCoach } from './coach/liveCoach.ts';
 import { CallControls } from './controls/controls.ts';
@@ -75,11 +75,7 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
   const configResult = readCallConfig(process.env);
   if (!configResult.ok) {
     logger.error({ problems: configResult.problems }, 'agent is missing configuration');
-    return failCall(
-      ctx,
-      publisher,
-      `The voice agent is not configured: ${configResult.problems.join('; ')}.`,
-    );
+    return failCall(ctx, publisher, describeMissingCallConfig(configResult.problems));
   }
   const config = configResult.config;
   const spool = new LogSpool(config.AGENT_SPOOL_DIR ?? DEFAULT_SPOOL_DIR, logger);

@@ -2,7 +2,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PROSPECT_AGENT_NAME } from '@ccc/contracts';
 import { type JobProcess, ServerOptions, type VAD, cli, defineAgent } from '@livekit/agents';
 import * as silero from '@livekit/agents-plugin-silero';
-import { loadDotEnv, readWorkerConfig, turnDetectorKind } from './config.ts';
+import {
+  describeMissingCallConfig,
+  loadDotEnv,
+  readCallConfig,
+  readWorkerConfig,
+  turnDetectorKind,
+} from './config.ts';
 import { runCall } from './runCall.ts';
 
 interface ProcessData {
@@ -37,6 +43,12 @@ if (isMain) {
     );
     process.exit(0);
   }
+
+  // Calls check their own settings (so a gap ends that call with a reason the rep can
+  // read), but saying so now puts it in the log the moment a deploy starts.
+  const call = readCallConfig(process.env);
+  if (call.ok) console.log('[agent] Call settings are complete.');
+  else console.warn(`[agent] ${describeMissingCallConfig(call.problems)}`);
 
   if (turnDetectorKind(process.env) === 'multilingual') {
     // The plan's text-based turn detector registers an inference runner when its

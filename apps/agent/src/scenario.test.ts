@@ -32,13 +32,25 @@ describe('fetchScenario', () => {
 
   it("passes on the API's own error message", async () => {
     const error = await load(() =>
-      Promise.resolve(json(401, { error: 'Missing or wrong header.' })),
+      Promise.resolve(json(404, { error: 'Unknown scenario: medium-finance-director' })),
     )
       .then(() => null)
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ScenarioLoadError);
     expect((error as Error).message).toBe(
-      'the API answered 401 for medium-finance-director: Missing or wrong header.',
+      'the API answered 404 for medium-finance-director: Unknown scenario: medium-finance-director',
+    );
+  });
+
+  it('names the secret when the API refuses it: the agent and the API disagree', async () => {
+    const error = await load(() =>
+      Promise.resolve(json(401, { error: 'Missing or wrong x-internal-secret header.' })),
+    )
+      .then(() => null)
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ScenarioLoadError);
+    expect((error as Error).message).toBe(
+      "the API refused the agent's INTERNAL_API_SECRET: it must be the same value on the agent and the API",
     );
   });
 

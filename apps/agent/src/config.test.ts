@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readCallConfig, readWorkerConfig } from './config.ts';
+import { describeMissingCallConfig, readCallConfig, readWorkerConfig } from './config.ts';
 
 describe('readWorkerConfig', () => {
   it('accepts a complete LiveKit configuration', () => {
@@ -115,6 +115,13 @@ describe('readCallConfig', () => {
     expect(derived.ok && derived.config.API_BASE_URL).toBe('http://cold-call-coach:10000');
     const explicit = readCallConfig({ ...hostport, API_BASE_URL: 'https://coach.example.com' });
     expect(explicit.ok && explicit.config.API_BASE_URL).toBe('https://coach.example.com');
+  });
+
+  it('says the gap is in the agent’s own settings, not the API’s', () => {
+    expect(describeMissingCallConfig(['INTERNAL_API_SECRET is not set'])).toBe(
+      "The voice agent's own settings are incomplete: INTERNAL_API_SECRET is not set. " +
+        'Set them where the agent runs, not only on the API, and restart it.',
+    );
   });
 
   it('reports each missing provider key by name', () => {

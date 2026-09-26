@@ -104,6 +104,15 @@ function withApiBaseUrl(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 
 export const readWorkerConfig = (env: NodeJS.ProcessEnv) => read(WorkerConfig, env);
 
+/**
+ * What a call ends with (and the log says at start-up) while the agent's own settings
+ * are incomplete. On a host the agent is its own service with its own environment, so
+ * a value set on the API alone doesn't reach it.
+ */
+export const describeMissingCallConfig = (problems: readonly string[]) =>
+  `The voice agent's own settings are incomplete: ${problems.join('; ')}. ` +
+  'Set them where the agent runs, not only on the API, and restart it.';
+
 /** The selected turn detector; an invalid value falls back to the default here and fails the call later. */
 export const turnDetectorKind = (env: NodeJS.ProcessEnv): CallConfig['TURN_DETECTOR'] =>
   CallConfig.shape.TURN_DETECTOR.safeParse(env.TURN_DETECTOR).data ?? 'multilingual';
