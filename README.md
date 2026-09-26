@@ -73,6 +73,27 @@ day and time, and she agrees to meet.
 judge and state engine, text only, and prints each run's outcome and state trace. It
 spends Claude tokens, so run it by hand (`pnpm simulate --help` for the options). The bar:
 the terrible rep books no meetings in 5 runs, and the good rep books at least 3.
+`--review` also runs the post-call review on each simulated call and prints the result.
+
+## After the call
+
+Hang up (or get hung up on) and the page moves to the call's review. The agent sends
+the call log to the API as the call ends, and the API reviews it with Claude
+(`REVIEW_MODEL`, default `claude-opus-5` at `REVIEW_EFFORT=high`):
+
+- an overall score out of 100 and one per rubric stage (`scenarios/rubrics/cold-call-v1.json`),
+  each with quotes from the call;
+- your delivery against the targets: talk ratio, pace, fillers, open vs closed questions,
+  longest monologue, time to your first question (measured by code, never by Claude);
+- the three moments that mattered most, as _you said → try instead → why_, and every
+  objection she raised with a better answer;
+- one drill, and the full transcript with each quote's turn marked. Click a turn number
+  to jump to it.
+
+Every quote is checked against the transcript before it's shown. The review drops any
+it can't find, so each criticism uses your actual words. **History** lists every call
+with its outcome, score and length. A review needs `ANTHROPIC_API_KEY` on the API. Without
+one, the page says so, and **Try again** reruns the review once the key is set.
 
 `TURN_DETECTOR=audio` in `.env` swaps the plan's text-based turn detector for LiveKit's
 newer on-device audio model, which needs no download; the plugin now marks the text

@@ -1,4 +1,5 @@
 import {
+  type CallLog,
   DispatchMetadata,
   type InternalScenarioResponse,
   REP_IDENTITY,
@@ -14,7 +15,9 @@ import { createClaude } from './claude/client.ts';
 import { type CallConfig, readCallConfig } from './config.ts';
 import { claudeJudge } from './judge/judge.ts';
 import { LatencyTracker } from './latency.ts';
-import type { Logger } from './log.ts';
+import { postCallLog } from './log/post.ts';
+import { CallRecorder } from './log/recorder.ts';
+import type { Logger } from './logger.ts';
 import { actOnReply } from './prospect/actions.ts';
 import { ProspectAgent } from './prospect/agent.ts';
 import { ProspectBrain } from './prospect/brain.ts';
@@ -24,6 +27,10 @@ import { cartesiaSpeed, chooseVoice, fetchScenario, keytermsFor, ttsLanguage } f
 
 /** How long to wait for the rep before giving up on telling them anything. */
 const REP_WAIT_MS = 10_000;
+/** How long the call log waits for judgements still running when the call ends. */
+const JUDGE_SETTLE_MS = 5_000;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export function parseDispatchMetadata(text: string): DispatchMetadata | null {
   try {
@@ -63,6 +70,14 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
     );
   }
   const config = configResult.config;
+  const postLog = (log: CallLog) =>
+    postCallLog({
+      apiBaseUrl: config.API_BASE_URL,
+      secret: config.INTERNAL_API_SECRET,
+      callId: meta.callId,
+      log,
+      logger,
+    });
 
   let loaded: InternalScenarioResponse;
   try {
@@ -74,16 +89,22 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
   } catch (error) {
     logger.error({ err: error }, 'could not load the scenario');
     const detail = error instanceof Error ? error.message : String(error);
-    return failCall(ctx, publisher, `The voice agent couldn't load the scenario: ${detail}.`);
+    return failCall(
+      ctx,
+      publisher,
+      `The voice agent couldn't load the scenario: ${detail}.`,
+      postLog,
+    );
   }
   const { scenario, product } = loaded;
 
   const voiceChoice = chooseVoice(scenario, config.CARTESIA_VOICE_ID);
   if (!voiceChoice.ok) {
     logger.error({ scenarioId: scenario.id }, voiceChoice.problem);
-    return failCall(ctx, publisher, `${voiceChoice.problem}.`);
+    return failCall(ctx, publisher, `${voiceChoice.problem}.`, postLog);
   }
 
+  const recorder = new CallRecorder();
   const claude = createClaude(config.ANTHROPIC_API_KEY);
   const brain = new ProspectBrain({
     scenario,
@@ -93,9 +114,23 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
       model: config.COACH_MODEL,
       effort: config.COACH_EFFORT,
       logger,
+      onUsage: (model, usage) => recorder.usage('judge', model, usage),
     }),
     logger,
     onState: (payload) => void publisher.publish(Topics.prospectState, payload),
+    onJudged: ({ turn, judged, judge, before, after }) =>
+      recorder.event('judgement', {
+        turn,
+        judged,
+        stage: judge.stage,
+        signals: Object.entries(judge.signals)
+          .filter(([, on]) => on)
+          .map(([name]) => name),
+        revealEarned: judge.revealEarned,
+        tip: judge.tip,
+        interest: [before.interest, after.interest],
+        patience: [before.patience, after.patience],
+      }),
   });
   const ledger = new ReplyLedger();
   const agent = new ProspectAgent({
@@ -106,6 +141,8 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
     brain,
     ledger,
     logger,
+    onUsage: (model, usage) => recorder.usage('prospect', model, usage),
+    onSttFinal: (words) => recorder.sttFinal(words),
   });
 
   const session = new voice.AgentSession({
@@ -136,26 +173,60 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
     shutdown: (reason) => ctx.shutdown(reason),
     logger,
     openingLine: scenario.prospect.openingLine,
+    onConnected: () => recorder.connected(),
+  });
+
+  // Whatever ends the call (her, the rep, the time limit, a crash), the log
+  // goes to the API once the job shuts down; the API reviews it from there.
+  ctx.addShutdownCallback(async () => {
+    await Promise.race([brain.settled(), sleep(JUDGE_SETTLE_MS)]);
+    const ended = controller.ended ?? {
+      outcome: 'error' as const,
+      reason: 'The voice agent stopped unexpectedly.',
+      endedBy: 'error' as const,
+      at: Date.now(),
+    };
+    recorder.event('outcome', { ...ended });
+    await postLog(
+      recorder.build({
+        ...ended,
+        stateAfterRepTurn: (n) => brain.history.find((t) => t.turn === n)?.after ?? null,
+      }),
+    );
   });
 
   const latency = new LatencyTracker();
   session.on(voice.AgentSessionEventTypes.ConversationItemAdded, ({ item }) => {
     const payload = latency.onItem(item);
-    if (payload) void publisher.publish(Topics.debugLatency, payload);
+    if (payload) {
+      recorder.latency(payload);
+      void publisher.publish(Topics.debugLatency, payload);
+    }
     if (item.type !== 'message') return;
+    const text = item.textContent ?? '';
+    const timing = {
+      startedSpeakingAt: item.metrics.startedSpeakingAt,
+      stoppedSpeakingAt: item.metrics.stoppedSpeakingAt,
+      committedAt: Date.now(),
+    };
 
     if (item.role === 'user') {
       // Judged beside her reply, never before it: the result shapes her next one.
-      brain.repTurn(chatContextToTurns(agent.chatCtx), {
+      const repTurn = brain.repTurn(chatContextToTurns(agent.chatCtx), {
         longestMonologueSec: repSpeakingSeconds(item.metrics),
       });
+      recorder.repTurn({ text, timing, repTurn });
     } else if (item.role === 'assistant') {
+      recorder.prospectTurn({ text, timing, interrupted: item.interrupted, state: brain.state });
       // A reply acts only once heard in full; one she was cut off in does nothing.
       const reply = ledger.committed(item.extra[REPLY_ID_KEY]);
       if (reply && !item.interrupted) {
-        actOnReply(reply, brain.repTurns, { brain, controller, logger }).catch((error: unknown) =>
-          logger.error({ err: error }, 'acting on her reply failed'),
-        );
+        actOnReply(reply, brain.repTurns, {
+          brain,
+          controller,
+          logger,
+          record: (kind, data) => recorder.event(kind, data),
+        }).catch((error: unknown) => logger.error({ err: error }, 'acting on her reply failed'));
       }
     }
   });
@@ -192,12 +263,32 @@ function describeError(error: object): string {
   return cause instanceof Error ? cause.message : 'The voice pipeline failed.';
 }
 
-/** Tells the rep why the call cannot go ahead, then ends the job. */
+/**
+ * Tells the rep why the call cannot go ahead, then ends the job. With a way to
+ * reach the API, the call is logged as failed too, so history shows why.
+ */
 async function failCall<P>(
   ctx: JobContext<P>,
   publisher: Publisher,
   reason: string,
+  postLog?: (log: CallLog) => Promise<boolean>,
 ): Promise<void> {
+  if (postLog) {
+    ctx.addShutdownCallback(async () => {
+      const at = new Date().toISOString();
+      await postLog({
+        outcome: 'error',
+        reason,
+        connectedAt: null,
+        endedAt: at,
+        durationMs: 0,
+        turns: [],
+        events: [{ tMs: 0, kind: 'error', payload: { reason } }],
+        latency: [],
+        usage: {},
+      });
+    });
+  }
   try {
     await ctx.connect();
     await Promise.race([

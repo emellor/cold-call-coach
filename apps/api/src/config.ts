@@ -28,6 +28,16 @@ const Config = z.object({
   LIVEKIT_API_SECRET: optional(z.string()),
   // Shared with the agent for the /internal routes; they answer 503 without it.
   INTERNAL_API_SECRET: optional(z.string().min(16, 'must be at least 16 characters')),
+  // The post-call review. Without a key, reviews fail with a reason the web shows.
+  ANTHROPIC_API_KEY: optional(z.string().min(1)),
+  REVIEW_MODEL: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(1).default('claude-opus-5'),
+  ),
+  REVIEW_EFFORT: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('high'),
+  ),
 });
 export type Config = z.infer<typeof Config>;
 

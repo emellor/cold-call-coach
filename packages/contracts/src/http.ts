@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { CallMode, ScenarioId } from './call.ts';
+import { CallMode, CallOutcome, CallPhase, ScenarioId } from './call.ts';
+import { CallTurn } from './callLog.ts';
+import { CallMetrics } from './metrics.ts';
+import { ReviewResult, ReviewStatus } from './review.ts';
 import { Difficulty, ProductSpec, ScenarioSpec } from './scenario.ts';
 
 /** Every non-2xx JSON response from the API. */
@@ -60,3 +63,56 @@ export type InternalScenarioResponse = z.infer<typeof InternalScenarioResponse>;
 
 /** The header the agent authenticates /internal routes with. */
 export const INTERNAL_SECRET_HEADER = 'x-internal-secret';
+
+/** `POST /internal/calls/:id/log` (agent only). */
+export const CallLogResponse = z.object({ ok: z.literal(true), review: ReviewStatus });
+export type CallLogResponse = z.infer<typeof CallLogResponse>;
+
+/** One row of the call history. */
+export const CallSummary = z.object({
+  id: z.uuid(),
+  startedAt: z.iso.datetime(),
+  mode: CallMode,
+  status: CallPhase,
+  outcome: CallOutcome.nullable(),
+  durationMs: z.int().nonnegative().nullable(),
+  scenario: z.object({
+    id: ScenarioId,
+    version: z.int().positive(),
+    title: z.string(),
+    difficulty: Difficulty,
+    prospectName: z.string(),
+  }),
+  overallScore: z.int().min(0).max(100).nullable(),
+  reviewStatus: ReviewStatus.nullable(),
+});
+export type CallSummary = z.infer<typeof CallSummary>;
+
+/** `GET /api/calls` */
+export const CallListResponse = z.object({ calls: z.array(CallSummary) });
+export type CallListResponse = z.infer<typeof CallListResponse>;
+
+export const CallReview = z.object({
+  status: ReviewStatus,
+  result: ReviewResult.nullable(),
+  error: z.string().nullable(),
+  model: z.string().nullable(),
+  costUsd: z.number().nonnegative().nullable(),
+  updatedAt: z.iso.datetime(),
+});
+export type CallReview = z.infer<typeof CallReview>;
+
+/** `GET /api/calls/:id`: the call, its transcript, its metrics and its review. */
+export const CallDetail = z.object({
+  call: CallSummary,
+  outcomeReason: z.string().nullable(),
+  turns: z.array(CallTurn),
+  /** Null until the call log has arrived. */
+  metrics: CallMetrics.nullable(),
+  review: CallReview.nullable(),
+});
+export type CallDetail = z.infer<typeof CallDetail>;
+
+/** `POST /api/calls/:id/review/rerun` */
+export const ReviewRerunResponse = z.object({ status: ReviewStatus });
+export type ReviewRerunResponse = z.infer<typeof ReviewRerunResponse>;

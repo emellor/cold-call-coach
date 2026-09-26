@@ -1,5 +1,5 @@
 import { CreateCallResponse, DispatchMetadata, roomNameForCall } from '@ccc/contracts';
-import { eq } from 'drizzle-orm';
+import { and, eq, gte } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { TokenVerifier } from 'livekit-server-sdk';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -110,7 +110,11 @@ describe.skipIf(!hasDb)('POST /api/calls (real Postgres)', () => {
       },
       { webDistDir: '/nonexistent' },
     );
-    const before = await db.$count(calls);
+    // Other test files create calls concurrently, so count only exam calls started from now.
+    const since = new Date(Date.now() - 1_000);
+    const examCallsSince = () =>
+      db.$count(calls, and(eq(calls.mode, 'exam'), gte(calls.startedAt, since)));
+    const before = await examCallsSince();
     const res = await bare.inject({
       method: 'POST',
       url: '/api/calls',
@@ -120,7 +124,7 @@ describe.skipIf(!hasDb)('POST /api/calls (real Postgres)', () => {
     expect(res.json<{ error: string }>().error).toContain(
       'LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET',
     );
-    expect(await db.$count(calls)).toBe(before);
+    expect(await examCallsSince()).toBe(before);
     await bare.close();
   });
 });

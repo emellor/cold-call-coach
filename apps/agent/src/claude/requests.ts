@@ -1,8 +1,13 @@
 import type { BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import { JudgeResult } from '@ccc/contracts';
-import { type ChatTurn, type Effort, SERVER_FALLBACK_BETA, modelCapabilities } from '@ccc/core';
+import {
+  type ChatTurn,
+  type Effort,
+  SERVER_FALLBACK_BETA,
+  modelCapabilities,
+  structuredFormat,
+} from '@ccc/core';
 import { PROSPECT_TOOLS } from '../prospect/tools.ts';
-import { structuredFormat } from './structuredOutput.ts';
 
 /** Room for one or two spoken sentences, a tool call, and any adaptive thinking at low effort. */
 export const PROSPECT_MAX_TOKENS = 512;

@@ -6,7 +6,7 @@ import type {
   MessageCreateParamsNonStreaming,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import type { JudgeResult } from '@ccc/contracts';
-import type { Effort } from '@ccc/core';
+import type { Effort, TokenUsage } from '@ccc/core';
 import { judgeRequest } from '../claude/requests.ts';
 
 /** Give up on a judgement after this long; the next turn is judged regardless. */
@@ -34,8 +34,10 @@ export function claudeJudge(options: {
   effort: Effort;
   logger: JudgeLogger;
   timeoutMs?: number;
+  /** Every answered call's usage, by the model that answered (the call log sums it). */
+  onUsage?: (model: string, usage: TokenUsage) => void;
 }): Judge {
-  const { messages, model, effort, logger, timeoutMs = JUDGE_TIMEOUT_MS } = options;
+  const { messages, model, effort, logger, timeoutMs = JUDGE_TIMEOUT_MS, onUsage } = options;
   return async ({ system, user }) => {
     const started = performance.now();
     try {
@@ -43,6 +45,7 @@ export function claudeJudge(options: {
         signal: AbortSignal.timeout(timeoutMs),
       });
       const ms = Math.round(performance.now() - started);
+      onUsage?.(message.model, usageOf(message));
       logger.info(
         {
           lane: 'judge',
@@ -70,3 +73,11 @@ export function claudeJudge(options: {
     }
   };
 }
+
+/** A Claude message's token counts in the shape the pricing and call log use. */
+export const usageOf = (message: Pick<BetaMessage, 'usage'>): TokenUsage => ({
+  inputTokens: message.usage.input_tokens,
+  cacheReadInputTokens: message.usage.cache_read_input_tokens ?? 0,
+  cacheCreationInputTokens: message.usage.cache_creation_input_tokens ?? 0,
+  outputTokens: message.usage.output_tokens,
+});

@@ -1,7 +1,10 @@
 // Every payload that crosses a wire (HTTP, LiveKit text streams, RPC) has a zod
 // schema here, and both ends validate against it.
 export * from './call.ts';
+export * from './callLog.ts';
 export * from './http.ts';
 export * from './judge.ts';
+export * from './metrics.ts';
+export * from './review.ts';
 export * from './scenario.ts';
 export * from './topics.ts';

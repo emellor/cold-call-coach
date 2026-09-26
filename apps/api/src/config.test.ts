@@ -38,6 +38,14 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ INTERNAL_API_SECRET: 'short' })).toThrowError(/16 characters/);
   });
 
+  it('reviews on Opus 5 at high effort unless told otherwise', () => {
+    const config = loadConfig({ REVIEW_MODEL: '', REVIEW_EFFORT: '', ANTHROPIC_API_KEY: '' });
+    expect(config).toMatchObject({ REVIEW_MODEL: 'claude-opus-5', REVIEW_EFFORT: 'high' });
+    expect(config.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(loadConfig({ REVIEW_EFFORT: 'max' }).REVIEW_EFFORT).toBe('max');
+    expect(() => loadConfig({ REVIEW_EFFORT: 'extreme' })).toThrowError(/REVIEW_EFFORT/);
+  });
+
   it("refuses .env.example's development secret in production", () => {
     const production = { NODE_ENV: 'production', DATABASE_URL: 'postgres://db/coach' };
     expect(() =>

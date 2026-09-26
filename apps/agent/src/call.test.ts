@@ -141,3 +141,34 @@ describe('CallController and a booked meeting', () => {
     ]);
   });
 });
+
+describe('CallController, for the call log', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('marks the pick-up before announcing it, and remembers how the call ended', async () => {
+    const onConnected = vi.fn();
+    const { controller, deps } = setup(() => 0);
+    const withHook = new CallController({ ...deps, onConnected });
+    expect(controller.ended).toBeUndefined();
+
+    const pickUp = withHook.ringAndPickUp();
+    await vi.advanceTimersByTimeAsync(RING_MS.min);
+    await pickUp;
+    expect(onConnected).toHaveBeenCalledOnce();
+    const connectedPublishes = deps.publisher.publish.mock.calls.filter(
+      ([, payload]) => (payload as { phase: string }).phase === 'connected',
+    );
+    expect(connectedPublishes).toHaveLength(1);
+
+    vi.setSystemTime(new Date('2026-09-26T10:05:00Z'));
+    await withHook.recordMeeting('Friday at 9');
+    await withHook.end('ended_by_rep');
+    expect(withHook.ended).toEqual({
+      outcome: 'meeting_booked',
+      reason: 'Friday at 9',
+      endedBy: 'ended_by_rep',
+      at: Date.parse('2026-09-26T10:05:00Z'),
+    });
+  });
+});

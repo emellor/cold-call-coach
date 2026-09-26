@@ -68,6 +68,8 @@ export interface ProspectBrainOptions {
   logger: BrainLogger;
   /** After every state change: publish `prospect.state`. */
   onState?: (payload: ProspectStatePayload) => void;
+  /** After every judgement, with the whole record (the call log keeps it). */
+  onJudged?: (turn: JudgedTurn) => void;
 }
 
 export class ProspectBrain {
@@ -154,7 +156,7 @@ export class ProspectBrain {
   }
 
   async #judge(turn: number, turns: readonly TranscriptTurn[], metrics: TurnMetrics) {
-    const { scenario, judge, logger, onState } = this.#options;
+    const { scenario, judge, logger, onState, onJudged } = this.#options;
     const before = this.#state;
     let result: JudgeResult | null = null;
     try {
@@ -184,6 +186,7 @@ export class ProspectBrain {
       },
       'rep turn judged',
     );
+    onJudged?.(record);
     onState?.(this.statePayload());
     return record;
   }

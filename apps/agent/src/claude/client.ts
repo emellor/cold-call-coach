@@ -9,5 +9,6 @@ export const createClaude = (apiKey: string): Anthropic => new Anthropic({ apiKe
 // Re-exported for scripts/simulate-call.ts, which reaches the SDK through the agent.
 export type {
   BetaMessage,
+  BetaRawMessageStreamEvent,
   MessageCreateParamsNonStreaming,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages';

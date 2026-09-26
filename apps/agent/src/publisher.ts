@@ -1,7 +1,7 @@
 import type { Topic } from '@ccc/contracts';
 import type { Room } from '@livekit/rtc-node';
 import type { z } from 'zod';
-import type { Logger } from './log.ts';
+import type { Logger } from './logger.ts';
 
 /**
  * Sends topic payloads to the room with `sendText`. Payloads are validated

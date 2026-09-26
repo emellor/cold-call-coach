@@ -35,6 +35,15 @@ export interface CallView {
 /** Hang up if nobody answers: usually the agent worker isn't running. */
 export const NO_ANSWER_MS = 30_000;
 
+/** How long "Call ended" shows before the page moves on to the review. */
+export const REVIEW_REDIRECT_MS = 1_500;
+
+/** Where to go once the call is over: its review, if she ever picked up. */
+export const reviewPathAfter = (view: CallView): string | null =>
+  view.phase === 'ended' && view.connectedAt !== undefined && view.callId
+    ? `/calls/${view.callId}`
+    : null;
+
 const OUTCOME_MESSAGES: Record<CallOutcome, string> = {
   meeting_booked: 'Meeting booked.',
   hung_up_by_prospect: 'She hung up.',

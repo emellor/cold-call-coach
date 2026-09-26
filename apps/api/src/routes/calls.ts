@@ -1,12 +1,51 @@
-import { CreateCallRequest, CreateCallResponse } from '@ccc/contracts';
+import {
+  CallDetail,
+  CallListResponse,
+  CreateCallRequest,
+  CreateCallResponse,
+  ReviewRerunResponse,
+} from '@ccc/contracts';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import type { AppDeps } from '../app.ts';
+import { getCallDetail, listCalls } from '../calls/store.ts';
 import { liveKitConfig } from '../config.ts';
 import { LOCAL_USER_ID, calls } from '../db/schema.ts';
 import { mintRepToken } from '../livekit.ts';
+import type { ReviewQueue } from '../review/queue.ts';
 import { latestScenario } from '../scenarios.ts';
 
-export function registerCallRoutes(app: FastifyInstance, { config, db }: AppDeps): void {
+const CallParams = z.object({ id: z.uuid() });
+
+export function registerCallRoutes(
+  app: FastifyInstance,
+  { config, db }: AppDeps,
+  queue: ReviewQueue,
+): void {
+  app.get('/api/calls', async () => CallListResponse.parse({ calls: await listCalls(db) }));
+
+  app.get('/api/calls/:id', async (request, reply) => {
+    const { id } = CallParams.parse(request.params);
+    const detail = await getCallDetail(db, id);
+    if (!detail) return reply.code(404).send({ error: `Unknown call: ${id}` });
+    return CallDetail.parse(detail);
+  });
+
+  app.post('/api/calls/:id/review/rerun', async (request, reply) => {
+    const { id } = CallParams.parse(request.params);
+    const [call] = await db
+      .select({ status: calls.status })
+      .from(calls)
+      .where(and(eq(calls.id, id), eq(calls.userId, LOCAL_USER_ID)));
+    if (!call) return reply.code(404).send({ error: `Unknown call: ${id}` });
+    if (call.status !== 'ended') {
+      return reply.code(409).send({ error: "This call's log hasn't arrived yet." });
+    }
+    const status = await queue.enqueue(id);
+    return reply.code(202).send(ReviewRerunResponse.parse({ status }));
+  });
+
   app.post('/api/calls', async (request, reply) => {
     const { scenarioId, mode } = CreateCallRequest.parse(request.body);
 

@@ -43,6 +43,27 @@ describe('claudeJudge', () => {
     expect(options?.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it('reports usage by the model that answered', async () => {
+    const { messages } = fakeParse(() =>
+      Promise.resolve(reply({ model: 'claude-haiku-4-5', parsed_output: judged() })),
+    );
+    const onUsage = vi.fn();
+    const judge = claudeJudge({
+      messages,
+      model: 'claude-opus-5',
+      effort: 'low',
+      logger: silentLogger,
+      onUsage,
+    });
+    await judge(prompt);
+    expect(onUsage).toHaveBeenCalledWith('claude-haiku-4-5', {
+      inputTokens: 900,
+      cacheReadInputTokens: 700,
+      cacheCreationInputTokens: 0,
+      outputTokens: 80,
+    });
+  });
+
   it('returns null when Claude declines', async () => {
     const { messages } = fakeParse(() =>
       Promise.resolve(reply({ stop_reason: 'refusal', parsed_output: null })),
