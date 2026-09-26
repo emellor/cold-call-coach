@@ -1,0 +1,19 @@
+{
+  "name": "@ccc/agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node src/main.ts dev",
+    "build": "tsc --noEmit -p tsconfig.json",
+    "start": "node src/main.ts start",
+    "download-files": "livekit-agents download-files",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ccc/contracts": "workspace:*",
+    "@livekit/agents": "1.9.1",
+    "@livekit/rtc-node": "^1.1.0",
+    "zod": "^4.6.5"
+  }
+}

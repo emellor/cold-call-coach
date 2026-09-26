@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    // Pure logic: no Node or DOM globals. ESLint enforces the import side.
+    "types": []
+  },
+  "include": ["src"]
+}

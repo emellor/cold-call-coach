@@ -1,0 +1,15 @@
+packages:
+  - apps/*
+  - packages/*
+
+# One Vite across the workspace: vitest would otherwise resolve its own, newer
+# major and the React plugin in the root vitest config would see two copies.
+overrides:
+  vite: ^6.4.3
+
+# pnpm 10 skips dependency install scripts unless allowed here. true runs one;
+# false skips it without a warning. @livekit/local-inference's script is a no-op:
+# its native binaries arrive as optional platform packages.
+allowBuilds:
+  esbuild: true
+  '@livekit/local-inference': false
