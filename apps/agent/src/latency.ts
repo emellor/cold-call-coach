@@ -38,4 +38,9 @@ export class LatencyTracker {
     this.#lastRepMetrics = undefined;
     return payload;
   }
+
+  /** A rewind took back the rep's last turn: the retake keeps its number. */
+  rewound(): void {
+    this.#repTurns = Math.max(0, this.#repTurns - 1);
+  }
 }

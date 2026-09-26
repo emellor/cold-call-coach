@@ -7,8 +7,12 @@ import { AppHeader } from '../components/AppHeader.tsx';
 import { AvatarStage } from '../avatar/AvatarStage.tsx';
 import { AvatarStore } from '../avatar/avatarStore.ts';
 import { DEV_MOODS, type Mood } from '../avatar/config.ts';
+import { CoachPanel } from '../call/CoachPanel.tsx';
+import { HintCard, NoticeLine, TipCard } from '../call/cards.tsx';
+import { DialButton, LiveControls, ModeChoice } from '../call/controls.tsx';
 import { type CallView, REVIEW_REDIRECT_MS, reviewPathAfter, useCall } from '../call/useCall.ts';
-import { PhoneIcon, PhoneOffIcon } from '../components/icons.tsx';
+import { useCallMode } from '../call/useCallMode.ts';
+import { useShortcuts } from '../call/useShortcuts.ts';
 import { LatencyPanel } from '../components/LatencyPanel.tsx';
 import { Transcript } from '../components/Transcript.tsx';
 import { formatClock } from '../lib/stats.ts';
@@ -27,8 +31,19 @@ export function CallPage() {
   const [phoneMode, setPhoneMode] = usePersistentFlag('ccc.phoneMode', false);
   const [lipSyncDelay, setLipSyncDelay] = usePersistentFlag('ccc.lipSyncDelay', false);
   const [devMood, setDevMood] = useState<Mood>('neutral');
-  const { view, dial, hangUp } = useCall();
+  const { view, dial, hangUp, togglePause, hint, dismissHint, rewind } = useCall();
+  const [mode, setMode] = useCallMode();
   const live = isLive(view.phase);
+  const coached = live && view.mode === 'coached';
+  // Pause, hint and rewind need her on the line; hanging up works from the first ring.
+  const coaching = coached && view.phase === 'connected';
+
+  useShortcuts({
+    togglePause: coaching ? () => void togglePause() : undefined,
+    hint: coaching ? () => void hint() : undefined,
+    rewind: coaching ? () => void rewind() : undefined,
+    hangUp: live ? hangUp : undefined,
+  });
 
   // Once a call she answered is over, its review is the next thing to see.
   const [, navigate] = useLocation();
@@ -58,7 +73,7 @@ export function CallPage() {
     // Inside the click: the avatar's audio context may only start from a user gesture.
     controller?.resumeAudio();
     setDialled(selected);
-    void dial({ scenarioId: selected.id, mode: 'coached' });
+    void dial({ scenarioId: selected.id, mode });
   };
 
   return (
@@ -74,9 +89,36 @@ export function CallPage() {
               name={shown?.prospect.name ?? 'Prospect'}
               role={shown ? `${shown.prospect.role}, ${shown.prospect.company}` : ''}
             >
-              <div className="absolute top-3 left-3">
+              <div className="absolute top-3 left-3 flex items-center gap-2">
                 <StatusChip view={view} prospect={firstName(shown)} />
+                {live && view.mode === 'exam' && (
+                  <p className="rounded-full bg-slate-950/70 px-3 py-1 text-sm text-slate-300 backdrop-blur-sm">
+                    Exam: no live help
+                  </p>
+                )}
               </div>
+              {live && view.paused && (
+                <div
+                  role="status"
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-slate-950/90 text-center"
+                >
+                  <p className="text-lg font-medium">Paused</p>
+                  <p className="text-sm text-slate-300">
+                    Your mic is off and {firstName(shown)} is waiting. Press Space to resume.
+                  </p>
+                </div>
+              )}
+              {coached && view.coach.tip && (
+                <div className="absolute right-3 bottom-3">
+                  <TipCard key={view.coach.tip.id} tip={view.coach.tip} />
+                </div>
+              )}
+              {/* Over the stage, so the controls never move: the rep may pause, then ask. */}
+              {coached && view.hint && (
+                <div className="absolute top-14 right-3 w-[min(28rem,calc(100%-1.5rem))]">
+                  <HintCard hint={view.hint} onClose={dismissHint} />
+                </div>
+              )}
               {live && view.meeting !== undefined && (
                 <p
                   role="status"
@@ -103,25 +145,31 @@ export function CallPage() {
                 </div>
               )}
             </AvatarStage>
-            {scenarios.status === 'ready' && available.length > 0 && (
-              <ScenarioPicker
-                scenarios={available}
-                selectedId={(live ? dialled : selected)?.id}
-                onSelect={setChosenId}
-                disabled={live}
-              />
+            {coached ? (
+              <CoachPanel coach={view.coach} />
+            ) : (
+              <>
+                {scenarios.status === 'ready' && available.length > 0 && (
+                  <ScenarioPicker
+                    scenarios={available}
+                    selectedId={(live ? dialled : selected)?.id}
+                    onSelect={setChosenId}
+                    disabled={live}
+                  />
+                )}
+                <p
+                  className="text-sm text-slate-400"
+                  role={scenarios.status === 'error' ? 'alert' : undefined}
+                >
+                  {scenarios.status === 'loading' && 'Loading scenarios…'}
+                  {scenarios.status === 'error' && scenarios.message}
+                  {scenarios.status === 'ready' &&
+                    (shown
+                      ? `Goal: ${shown.winCondition}.${live ? '' : ' Put your headset on and press Dial.'}`
+                      : 'No scenarios found: check the API log.')}
+                </p>
+              </>
             )}
-            <p
-              className="text-sm text-slate-400"
-              role={scenarios.status === 'error' ? 'alert' : undefined}
-            >
-              {scenarios.status === 'loading' && 'Loading scenarios…'}
-              {scenarios.status === 'error' && scenarios.message}
-              {scenarios.status === 'ready' &&
-                (selected
-                  ? `Goal: ${selected.winCondition}. Put your headset on and press Dial.`
-                  : 'No scenarios found: check the API log.')}
-            </p>
           </section>
 
           <aside className="flex min-h-0 flex-col rounded-xl border border-slate-800 bg-slate-900/60">
@@ -149,24 +197,26 @@ export function CallPage() {
             />
           </div>
 
-          {live ? (
-            <button
-              type="button"
-              onClick={hangUp}
-              className="inline-flex items-center gap-2 rounded-full bg-rose-600 px-6 py-3 font-medium text-white hover:bg-rose-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-300"
-            >
-              <PhoneOffIcon /> Hang up
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onDial}
-              disabled={!selected}
-              className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-6 py-3 font-medium text-white hover:bg-emerald-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <PhoneIcon /> {view.phase === 'ended' ? 'Dial again' : 'Dial'}
-            </button>
-          )}
+          <div className="flex flex-col items-center gap-2">
+            {live ? (
+              <LiveControls
+                coaching={coaching}
+                paused={view.paused}
+                busy={view.busy !== undefined}
+                hinting={view.hint?.status === 'loading'}
+                onTogglePause={() => void togglePause()}
+                onHint={() => void hint()}
+                onRewind={() => void rewind()}
+                onHangUp={hangUp}
+              />
+            ) : (
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <ModeChoice mode={mode} onChange={setMode} />
+                <DialButton onClick={onDial} disabled={!selected} again={view.phase === 'ended'} />
+              </div>
+            )}
+            {view.notice && <NoticeLine key={view.notice.id} notice={view.notice} />}
+          </div>
 
           <div className="flex justify-end">
             {import.meta.env.DEV && (

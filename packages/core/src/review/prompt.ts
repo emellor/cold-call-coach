@@ -11,6 +11,7 @@ import {
   type Speaker,
 } from '@ccc/contracts';
 import { privateFacts } from '../prospect/facts.ts';
+import { type ControlsUsed, anyControlsUsed } from './controls.ts';
 
 export interface ReviewTranscriptTurn {
   speaker: Speaker;
@@ -27,6 +28,8 @@ export interface ReviewPromptInput {
   outcome: CallOutcome;
   outcomeReason: string | null;
   turns: readonly ReviewTranscriptTurn[];
+  /** The practice controls the rep used, from the call's events (none if absent). */
+  controls?: ControlsUsed;
 }
 
 const OUTCOME_WORDS: Record<CallOutcome, string> = {
@@ -94,6 +97,30 @@ function metricLines(m: CallMetrics): string[] {
   ];
 }
 
+const times = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** The controls section, or nothing when the rep used none. */
+function controlLines(used: ControlsUsed | undefined): string {
+  if (!used || !anyControlsUsed(used)) return '';
+  const lines: string[] = [];
+  if (used.pauses > 0) {
+    const secs = Math.round(used.pausedMs / 1000);
+    lines.push(
+      `- Paused the call ${times(used.pauses, 'time')}${secs > 0 ? ` (${secs} s in all)` : ''}.`,
+    );
+  }
+  if (used.hints > 0) lines.push(`- Asked for ${times(used.hints, 'hint')}.`);
+  for (const r of used.rewinds) {
+    lines.push(
+      `- Rewound: took back "${r.tookBack}" and retook it; the retake is turn ${r.beforeTurn}.`,
+    );
+  }
+  return `
+Practice controls the rep used. Coached calls allow them, so don't mark the rep down for using them; mention them where they help, such as whether a retake was better:
+${lines.join('\n')}
+`;
+}
+
 export function buildReviewUserPrompt(input: ReviewPromptInput): string {
   const { metrics, outcome, outcomeReason, turns } = input;
   const reason = outcomeReason ? ` (${outcomeReason})` : '';
@@ -102,12 +129,15 @@ export function buildReviewUserPrompt(input: ReviewPromptInput): string {
     const cut = turn.interrupted ? ' [cut off by the rep]' : '';
     return `[${i + 1}] ${who} (${clock(turn.startMs)}): ${turn.text}${cut}`;
   });
+  const rewound = input.controls?.rewinds.length
+    ? ' (as it stands after the retakes: rewound turns are left out)'
+    : '';
   return `How the call ended: ${OUTCOME_WORDS[outcome]}${reason}.
 
 Delivery, measured by code (facts):
 ${metricLines(metrics).join('\n')}
-
-Transcript. Each line is [turn number] speaker (time since she answered):
+${controlLines(input.controls)}
+Transcript${rewound}. Each line is [turn number] speaker (time since she answered):
 ${transcript.join('\n')}
 
 Review this call.`;

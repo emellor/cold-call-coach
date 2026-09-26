@@ -65,6 +65,8 @@ export interface ProspectAgentOptions {
   onUsage?: (model: string, usage: TokenUsage) => void;
   /** Each final transcript's words, as Deepgram timed them. */
   onSttFinal?: (words: SttWord[]) => void;
+  /** True while the rep has the call paused: whatever LiveKit hears is not a turn. */
+  paused?: () => boolean;
 }
 
 /** Leads the reply with its id in `extra`, which LiveKit copies onto the committed message. */
@@ -121,6 +123,16 @@ export class ProspectAgent extends voice.Agent {
     const events = await voice.Agent.default.sttNode(this, audio, modelSettings);
     const onFinal = this.#options.onSttFinal;
     return events && onFinal ? tapFinalWords(events, onFinal) : events;
+  }
+
+  /**
+   * While paused the agent ignores turns (PLAN.md §8.3): a turn that completes
+   * anyway, from speech already under way when the rep paused, is dropped
+   * before it reaches the conversation, so she neither hears nor answers it.
+   */
+  override onUserTurnCompleted(_chatCtx: llm.ChatContext, _newMessage: llm.ChatMessage) {
+    if (this.#options.paused?.()) throw new voice.StopResponse();
+    return Promise.resolve();
   }
 
   override llmNode(

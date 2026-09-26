@@ -1,6 +1,7 @@
 import type { CallMetrics, RubricSpec } from '@ccc/contracts';
 import { describe, expect, it } from 'vitest';
 import { product, scenario } from '../test/fixtures.ts';
+import { NO_CONTROLS } from './controls.ts';
 import { buildReviewSystemPrompt, buildReviewUserPrompt, clock } from './prompt.ts';
 
 const rubric: RubricSpec = {
@@ -85,6 +86,35 @@ describe('buildReviewUserPrompt', () => {
     expect(prompt).toContain('[1] Prospect (0:00): Claire Hughes.');
     expect(prompt).toContain('[2] Rep (0:01): Hi, Sam here.');
     expect(prompt).toContain('[3] Prospect (1:05): Look, I [cut off by the rep]');
+  });
+
+  it('says nothing about controls on a call that used none', () => {
+    expect(prompt).not.toContain('Practice controls');
+    expect(buildReviewUserPrompt({ ...input, controls: NO_CONTROLS })).toBe(prompt);
+    expect(prompt).toContain(
+      '[target at most 45 s]\n- Times the rep talked over her: 2\n- First question asked: 38.5 s after she answered\n\nTranscript. Each line',
+    );
+  });
+
+  it('lists the pauses, hints and rewinds, without marking the rep down for them', () => {
+    const withControls = buildReviewUserPrompt({
+      ...input,
+      controls: {
+        pauses: 2,
+        pausedMs: 41_400,
+        hints: 1,
+        rewinds: [{ beforeTurn: 2, tookBack: 'Is now a bad time?' }],
+      },
+    });
+    expect(withControls).toContain("don't mark the rep down for using them");
+    expect(withControls).toContain('- Paused the call 2 times (41 s in all).');
+    expect(withControls).toContain('- Asked for 1 hint.');
+    expect(withControls).toContain(
+      '- Rewound: took back "Is now a bad time?" and retook it; the retake is turn 2.',
+    );
+    expect(withControls).toContain(
+      'Transcript (as it stands after the retakes: rewound turns are left out). Each line',
+    );
   });
 });
 

@@ -4,7 +4,7 @@ import type {
   BetaRawMessageStreamEvent,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import { ReadableStream } from 'node:stream/web';
-import { initializeLogger, llm, log, stt } from '@livekit/agents';
+import { initializeLogger, llm, log, stt, voice } from '@livekit/agents';
 import { describe, expect, it, vi } from 'vitest';
 import type { StreamingMessages } from '../claude/textStream.ts';
 import { ProspectAgent, tapFinalWords } from './agent.ts';
@@ -196,5 +196,29 @@ describe('the call log hooks', () => {
         ],
       ],
     ]);
+  });
+});
+
+describe('pause', () => {
+  it('drops a turn that completes while the rep has the call paused', async () => {
+    let paused = false;
+    const agent = new ProspectAgent({
+      persona: 'You are Claire Hughes.',
+      claude: fakeClaude([], {}).claude,
+      model: 'claude-opus-5',
+      effort: 'low',
+      brain: { note: () => NOTE, hangUpDue: false },
+      ledger: new ReplyLedger(),
+      logger: log(),
+      paused: () => paused,
+    });
+    const message = llm.ChatMessage.create({ role: 'user', content: 'Um, so' });
+    await expect(
+      agent.onUserTurnCompleted(new llm.ChatContext(), message),
+    ).resolves.toBeUndefined();
+    paused = true;
+    await expect(async () =>
+      agent.onUserTurnCompleted(new llm.ChatContext(), message),
+    ).rejects.toBeInstanceOf(voice.StopResponse);
   });
 });

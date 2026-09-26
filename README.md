@@ -75,6 +75,33 @@ spends Claude tokens, so run it by hand (`pnpm simulate --help` for the options)
 the terrible rep books no meetings in 5 runs, and the good rep books at least 3.
 `--review` also runs the post-call review on each simulated call and prints the result.
 
+## During the call
+
+Choose **Coached** or **Exam** next to **Dial**; the page remembers your choice.
+
+A **coached** call shows the live coach under her video:
+
+- where the call is: Opener → Reason for call → Discovery → Objections → Next step, as
+  the coach judges each of your turns;
+- your share of the talking against the 40–60% target, and your current monologue, which
+  turns amber at 30 s and red at 45 s;
+- your pace, fillers and open vs closed questions, updated as each of your turns ends;
+- a tip when the coach sees something hurting the call: at most one every 20 s, never
+  while she is talking over you, gone after 8 s.
+
+You also get controls, each with a key:
+
+| Control        | Key   | What it does                                                                                                                   |
+| -------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Pause / Resume | Space | Mutes your mic and stops her mid-sentence; she ignores anything she hears until you resume                                     |
+| Hint           | H     | Three lines you could say next, from Claude on `COACH_MODEL` (it never sees her private facts)                                 |
+| Rewind         | R     | Takes back your last turn and her reply. Her mood goes back to how it was, she says her previous line again, and you retake it |
+| Hang up        | Esc   | Ends the call                                                                                                                  |
+
+An **exam** call shows nothing live and offers only **Hang up**: the review is your only
+feedback. After a coached call, the review mentions any pauses, hints and rewinds, and it
+scores the call as it stands after them: a rewound turn is not in the transcript.
+
 ## After the call
 
 Hang up (or get hung up on) and the page moves to the call's review. The agent sends

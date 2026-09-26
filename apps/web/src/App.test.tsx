@@ -68,6 +68,18 @@ describe('App', () => {
     expect(await screen.findByRole('radio', { name: /Claire Hughes/ })).toBeChecked();
   });
 
+  it('dials coached calls unless the rep picks exam, and remembers the choice', async () => {
+    mockApi({ '/api/health': healthy, '/api/scenarios': () => json(200, SCENARIOS) });
+    const { unmount } = render(<App />);
+    expect(await screen.findByRole('radio', { name: /Coached/ })).toBeChecked();
+    fireEvent.click(screen.getByRole('radio', { name: /Exam/ }));
+    expect(screen.getByRole('radio', { name: /Exam/ })).toBeChecked();
+    unmount();
+
+    render(<App />);
+    expect(await screen.findByRole('radio', { name: /Exam/ })).toBeChecked();
+  });
+
   it('cannot dial when the scenarios fail to load, and says why', async () => {
     mockApi({
       '/api/health': healthy,

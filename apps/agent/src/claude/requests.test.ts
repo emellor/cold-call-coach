@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { PROSPECT_TOOLS } from '../prospect/tools.ts';
+import { HINT_MAX_TOKENS } from '@ccc/core';
 import {
   JUDGE_MAX_TOKENS,
   PROSPECT_MAX_TOKENS,
+  hintRequest,
   judgeRequest,
   prospectRequest,
 } from './requests.ts';
@@ -136,5 +138,31 @@ describe('judgeRequest', () => {
     expect(request.output_config.format.type).toBe('json_schema');
     expect(request).not.toHaveProperty('fallbacks');
     expect(request).not.toHaveProperty('temperature');
+  });
+});
+
+describe('hintRequest', () => {
+  const input = { effort: 'low' as const, system: 'You coach.', user: 'Rep: hi' };
+
+  it('asks the coach model for three lines as structured output, with a cached system', () => {
+    const request = hintRequest({ ...input, model: 'claude-opus-5' });
+    expect(request).toMatchObject({
+      model: 'claude-opus-5',
+      max_tokens: HINT_MAX_TOKENS,
+      system: [{ type: 'text', text: 'You coach.', cache_control: { type: 'ephemeral' } }],
+      messages: [{ role: 'user', content: 'Rep: hi' }],
+      output_config: { effort: 'low', format: { type: 'json_schema' } },
+      fallbacks: 'default',
+    });
+    for (const key of ['temperature', 'top_p', 'top_k']) expect(request).not.toHaveProperty(key);
+    const { format } = request.output_config;
+    expect(JSON.stringify(format.schema)).toContain('Exactly three different lines');
+    expect(format.parse('{"suggestions":["a","b","c"]}')).toEqual({ suggestions: ['a', 'b', 'c'] });
+  });
+
+  it('drops effort and fallbacks for Haiku 4.5', () => {
+    const request = hintRequest({ ...input, model: 'claude-haiku-4-5' });
+    expect(request.output_config).not.toHaveProperty('effort');
+    expect(request).not.toHaveProperty('fallbacks');
   });
 });

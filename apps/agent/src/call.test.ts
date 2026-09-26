@@ -148,8 +148,9 @@ describe('CallController, for the call log', () => {
 
   it('marks the pick-up before announcing it, and remembers how the call ended', async () => {
     const onConnected = vi.fn();
+    const onEnded = vi.fn();
     const { controller, deps } = setup(() => 0);
-    const withHook = new CallController({ ...deps, onConnected });
+    const withHook = new CallController({ ...deps, onConnected, onEnded });
     expect(controller.ended).toBeUndefined();
 
     const pickUp = withHook.ringAndPickUp();
@@ -170,5 +171,7 @@ describe('CallController, for the call log', () => {
       endedBy: 'ended_by_rep',
       at: Date.parse('2026-09-26T10:05:00Z'),
     });
+    // The live coach stops before the ended state goes out.
+    expect(onEnded).toHaveBeenCalledExactlyOnceWith(withHook.ended);
   });
 });

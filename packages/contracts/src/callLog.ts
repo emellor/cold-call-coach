@@ -37,7 +37,18 @@ export type LoggedTurn = z.infer<typeof LoggedTurn>;
 export const CallTurn = TurnFields.omit({ words: true });
 export type CallTurn = z.infer<typeof CallTurn>;
 
-export const EventKind = z.enum(['judgement', 'tool_call', 'meeting', 'outcome', 'error']);
+export const EventKind = z.enum([
+  'judgement',
+  'tool_call',
+  'meeting',
+  'outcome',
+  'error',
+  // The rep's controls (M5): the review may mention them.
+  'pause',
+  'resume',
+  'hint',
+  'rewind',
+]);
 export type EventKind = z.infer<typeof EventKind>;
 
 export const LoggedEvent = z.object({
@@ -47,7 +58,30 @@ export const LoggedEvent = z.object({
 });
 export type LoggedEvent = z.infer<typeof LoggedEvent>;
 
-/** Claude usage for one lane of the call (prospect, judge). */
+// Payloads of the control events the review reads back. `pause` carries none.
+
+export const ResumeEventPayload = z.object({ pausedMs: ms });
+export type ResumeEventPayload = z.infer<typeof ResumeEventPayload>;
+
+export const HintEventPayload = z.object({
+  suggestions: z.array(z.string()),
+  /** How long the hint took to come back. */
+  ms,
+});
+export type HintEventPayload = z.infer<typeof HintEventPayload>;
+
+/** The rep took back their last turn (and her reply to it) and retook it. */
+export const RewindEventPayload = z.object({
+  /** The transcript turn, counting from 1, that the retake now occupies. */
+  beforeTurn: z.int().positive(),
+  /** The rep's words that were taken back. */
+  tookBack: z.string(),
+  /** Her reply to them as far as she got, or null if she hadn't started. */
+  herReply: z.string().nullable(),
+});
+export type RewindEventPayload = z.infer<typeof RewindEventPayload>;
+
+/** Claude usage for one lane of the call (prospect, judge, hint). */
 export const LaneUsage = z.object({
   /** The model that served the calls (a fallback may differ from the one requested). */
   model: z.string(),
@@ -74,6 +108,11 @@ export const CallLog = z.object({
     .refine((ts) => new Set(ts.map((t) => t.idx)).size === ts.length, 'turn idx values repeat'),
   events: z.array(LoggedEvent),
   latency: z.array(DebugLatencyPayload),
-  usage: z.object({ prospect: LaneUsage.optional(), judge: LaneUsage.optional() }),
+  usage: z.object({
+    prospect: LaneUsage.optional(),
+    judge: LaneUsage.optional(),
+    /** The rep's hint requests (coached calls). */
+    hint: LaneUsage.optional(),
+  }),
 });
 export type CallLog = z.infer<typeof CallLog>;

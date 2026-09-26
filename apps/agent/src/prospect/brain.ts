@@ -2,6 +2,7 @@
 // that move it, and the meeting rules. It knows nothing of LiveKit, so
 // scripts/simulate-call.ts drives exactly the same logic as a real call.
 import type {
+  CallStage,
   JudgeResult,
   ProductSpec,
   ProspectState,
@@ -72,16 +73,24 @@ export interface ProspectBrainOptions {
   onJudged?: (turn: JudgedTurn) => void;
 }
 
+/** A queued judgement; a rewind cancels the ones for the turns it takes back. */
+interface Ticket {
+  cancelled: boolean;
+}
+
 export class ProspectBrain {
   readonly #options: ProspectBrainOptions;
   readonly #judgeSystem: string;
   #state: ProspectState;
   #repTurns = 0;
   #queue: Promise<unknown> = Promise.resolve();
-  readonly #pending = new Map<number, Promise<JudgedTurn>>();
-  readonly #history: JudgedTurn[] = [];
+  readonly #pending = new Map<number, Promise<JudgedTurn | undefined>>();
+  readonly #tickets = new Map<number, Ticket>();
+  #history: JudgedTurn[] = [];
   #meeting: string | null = null;
-  #meetingNotBooked = false;
+  /** The rep turn whose reply she agreed to a meeting in, when the rules refused it. */
+  #meetingNotBookedAt: number | null = null;
+  #rewinds = 0;
 
   constructor(options: ProspectBrainOptions) {
     this.#options = options;
@@ -113,11 +122,16 @@ export class ProspectBrain {
     return this.#history;
   }
 
+  /** The judge's stage for each judged turn, in order: the live stage tracker's input. */
+  get stages(): CallStage[] {
+    return this.#history.map((t) => t.judge.stage);
+  }
+
   /** The private note for her next reply. */
   note(): string {
     return stateToInstruction(this.#state, this.#options.scenario, {
       meetingBooked: this.#meeting,
-      meetingNotBooked: this.#meetingNotBooked,
+      meetingNotBooked: this.#meetingNotBookedAt !== null,
     });
   }
 
@@ -139,13 +153,15 @@ export class ProspectBrain {
    */
   repTurn(turns: readonly TranscriptTurn[], metrics: TurnMetrics): number {
     const turn = ++this.#repTurns;
-    const task = this.#queue.then(() => this.#judge(turn, turns, metrics));
+    const ticket: Ticket = { cancelled: false };
+    this.#tickets.set(turn, ticket);
+    const task = this.#queue.then(() => this.#judge(turn, turns, metrics, ticket));
     this.#queue = task.catch(() => undefined);
     this.#pending.set(turn, task);
     return turn;
   }
 
-  /** Resolves once rep turn `turn` has been judged and applied. */
+  /** Resolves once rep turn `turn` has been judged and applied (undefined if it was rewound). */
   judged(turn: number): Promise<JudgedTurn | undefined> {
     return this.#pending.get(turn) ?? Promise.resolve(undefined);
   }
@@ -155,8 +171,41 @@ export class ProspectBrain {
     await this.#queue;
   }
 
-  async #judge(turn: number, turns: readonly TranscriptTurn[], metrics: TurnMetrics) {
+  /**
+   * Rewind (PLAN.md §8.3): takes back rep turn `turn` and any after it. Their
+   * judgements are discarded, even one still running, and her state goes back
+   * to what it was before `turn`, so the retake is judged from there and gets
+   * the same turn number. A meeting refusal from those turns is forgotten too.
+   */
+  rewindTo(turn: number): void {
+    if (turn < 1 || turn > this.#repTurns) return;
+    this.#rewinds += 1;
+    for (const [t, ticket] of this.#tickets) {
+      if (t < turn) continue;
+      ticket.cancelled = true;
+      this.#tickets.delete(t);
+      this.#pending.delete(t);
+    }
+    const first = this.#history.find((t) => t.turn >= turn);
+    if (first) this.#state = first.before;
+    this.#history = this.#history.filter((t) => t.turn < turn);
+    this.#repTurns = turn - 1;
+    if (this.#meetingNotBookedAt !== null && this.#meetingNotBookedAt >= turn) {
+      this.#meetingNotBookedAt = null;
+    }
+    this.#options.logger.info({ turn, state: this.#state }, 'rewound');
+    this.#options.onState?.(this.statePayload());
+  }
+
+  async #judge(
+    turn: number,
+    turns: readonly TranscriptTurn[],
+    metrics: TurnMetrics,
+    ticket: Ticket,
+  ): Promise<JudgedTurn | undefined> {
     const { scenario, judge, logger, onState, onJudged } = this.#options;
+    // Taken back while it waited in the queue: don't spend a Claude call on it.
+    if (ticket.cancelled) return undefined;
     const before = this.#state;
     let result: JudgeResult | null = null;
     try {
@@ -167,6 +216,11 @@ export class ProspectBrain {
     } catch (error) {
       logger.warn({ err: error, turn }, 'judge threw; applying no judgement');
     }
+    if (ticket.cancelled) {
+      logger.info({ turn }, 'judgement of a rewound turn discarded');
+      return undefined;
+    }
+    this.#tickets.delete(turn);
     const applied = result ?? NO_JUDGEMENT;
     const after = applyJudgement(before, applied, metrics, scenario);
     this.#state = after;
@@ -199,10 +253,13 @@ export class ProspectBrain {
    * agreed yet, and she can put it right on the next turn.
    */
   async agreeToMeeting(when: string, turn: number): Promise<MeetingDecision> {
+    const rewinds = this.#rewinds;
     const record = await this.judged(turn);
     if (this.#meeting) return { booked: true, when: this.#meeting };
+    // The rep rewound while this waited: the turn she agreed in is gone.
+    if (this.#rewinds !== rewinds) return { booked: false, reason: 'the rep rewound that turn' };
     const { scenario } = this.#options;
-    if (!record) return this.#notBooked('she agreed before the rep had said anything');
+    if (!record) return this.#notBooked(turn, 'she agreed before the rep had said anything');
 
     const ask = recentMeetingAsk(
       this.#history.filter((t) => t.turn <= turn && t.judged).map((t) => t.judge),
@@ -213,21 +270,22 @@ export class ProspectBrain {
       : wouldMeet(record.before, scenario);
     if (allowed) {
       this.#meeting = when;
-      this.#meetingNotBooked = false;
+      this.#meetingNotBookedAt = null;
       return { booked: true, when };
     }
     if (!wouldMeet(record.before, scenario)) {
-      return this.#notBooked('she was not interested enough yet');
+      return this.#notBooked(turn, 'she was not interested enough yet');
     }
     return this.#notBooked(
+      turn,
       ask.askedForMeeting
         ? 'the rep never proposed a specific day and time'
         : 'the rep never asked for a meeting',
     );
   }
 
-  #notBooked(reason: string): MeetingDecision {
-    this.#meetingNotBooked = true;
+  #notBooked(turn: number, reason: string): MeetingDecision {
+    this.#meetingNotBookedAt = turn;
     return { booked: false, reason };
   }
 }

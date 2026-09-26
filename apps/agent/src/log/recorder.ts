@@ -10,9 +10,10 @@ import type {
   LoggedEvent,
   LoggedTurn,
   ProspectState,
+  RewindEventPayload,
   TimedWord,
 } from '@ccc/contracts';
-import { type TokenUsage, costUsd } from '@ccc/core';
+import { type MetricTurn, type TokenUsage, costUsd } from '@ccc/core';
 
 /** A word from a final STT result: seconds on the STT stream's own clock. */
 export interface SttWord {
@@ -29,7 +30,8 @@ export interface TurnTiming {
   committedAt: number;
 }
 
-type Lane = 'prospect' | 'judge';
+type Lane = 'prospect' | 'judge' | 'hint';
+const LANES: readonly Lane[] = ['prospect', 'judge', 'hint'];
 
 interface RecordedTurn extends Omit<LoggedTurn, 'stateAfter'> {
   /** The brain's number for a rep turn, to find its judged state at the end. */
@@ -140,6 +142,33 @@ export class CallRecorder {
     return idx;
   }
 
+  /** The committed turns so far, for the live coach's metrics. */
+  metricTurns(): MetricTurn[] {
+    return this.#turns.map(({ speaker, text, startMs, endMs, words, interrupted }) => ({
+      speaker,
+      text,
+      startMs,
+      endMs,
+      words,
+      interrupted,
+    }));
+  }
+
+  /**
+   * Rewind: drops the rep's last turn and everything after it (her reply to
+   * it), so the log keeps the call as it stands, and returns what was taken
+   * back for the `rewind` event. Null if the rep has no turn to take back.
+   */
+  rewind(): RewindEventPayload | null {
+    this.#words = [];
+    const last = this.#turns.findLastIndex((t) => t.speaker === 'rep');
+    const taken = this.#turns[last];
+    if (!taken) return null;
+    const reply = this.#turns.slice(last + 1).find((t) => t.speaker === 'prospect');
+    this.#turns.length = last;
+    return { beforeTurn: last + 1, tookBack: taken.text, herReply: reply?.text ?? null };
+  }
+
   event(kind: EventKind, payload: Record<string, unknown>): void {
     this.#events.push({ tMs: this.#since(this.#now()), kind, payload });
   }
@@ -175,7 +204,7 @@ export class CallRecorder {
   }): CallLog {
     const endedAt = end.at ?? this.#now();
     const usage: CallLog['usage'] = {};
-    for (const lane of ['prospect', 'judge'] as const) {
+    for (const lane of LANES) {
       const u = this.#usage[lane];
       if (u) usage[lane] = { ...u, costUsd: costUsd(u.model, u) };
     }
