@@ -1,11 +1,18 @@
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { liveKitPairProblem } from '@ccc/core';
 import { z } from 'zod';
 
 const repoEnvFile = fileURLToPath(new URL('../../../.env', import.meta.url));
 
-/** An empty `KEY=` line in .env means unset. */
-const blankIsUnset = (v: unknown) => (v === '' ? undefined : v);
+/**
+ * A value pasted into a host's settings loses any space or newline around it,
+ * and an empty `KEY=` line means unset.
+ */
+const blankIsUnset = (v: unknown) => {
+  const value = typeof v === 'string' ? v.trim() : v;
+  return value === '' ? undefined : value;
+};
 /** Blank counts as unset, so a `.default()` inside still applies. */
 const blankAsUnset = <S extends z.ZodType>(schema: S) => z.preprocess(blankIsUnset, schema);
 const nonEmpty = () => blankAsUnset(z.string().min(1));
@@ -13,11 +20,17 @@ const nonEmpty = () => blankAsUnset(z.string().min(1));
 const Effort = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 
 /** Needed for the worker to register with LiveKit at all. */
-const WorkerConfig = z.object({
-  LIVEKIT_URL: blankAsUnset(z.string().regex(/^wss?:\/\//, 'must be a ws:// or wss:// URL')),
-  LIVEKIT_API_KEY: nonEmpty(),
-  LIVEKIT_API_SECRET: nonEmpty(),
-});
+const WorkerConfig = z
+  .object({
+    LIVEKIT_URL: blankAsUnset(z.string().regex(/^wss?:\/\//, 'must be a ws:// or wss:// URL')),
+    LIVEKIT_API_KEY: nonEmpty(),
+    LIVEKIT_API_SECRET: nonEmpty(),
+  })
+  // A room token for a secret would only show up as LiveKit refusing every attempt.
+  .superRefine((config, ctx) => {
+    const problem = liveKitPairProblem(config.LIVEKIT_API_KEY, config.LIVEKIT_API_SECRET);
+    if (problem) ctx.addIssue({ code: 'custom', message: problem });
+  });
 export type WorkerConfig = z.infer<typeof WorkerConfig>;
 
 /**
@@ -70,11 +83,12 @@ function read<T>(schema: z.ZodType<T>, env: NodeJS.ProcessEnv): ConfigResult<T> 
   if (parsed.success) return { ok: true, config: parsed.data };
   return {
     ok: false,
-    problems: parsed.error.issues.map((i) =>
-      i.code === 'invalid_type' && i.input === undefined
-        ? `${i.path.join('.')} is not set`
-        : `${i.path.join('.')} ${i.message}`,
-    ),
+    problems: parsed.error.issues.map((i) => {
+      const name = i.path.join('.');
+      if (i.code === 'invalid_type' && i.input === undefined) return `${name} is not set`;
+      // A problem with the settings together names its own variables.
+      return name ? `${name} ${i.message}` : i.message;
+    }),
   };
 }
 

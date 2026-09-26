@@ -58,10 +58,8 @@ export function registerCallRoutes(
     const scenarioVersion = scenario.version;
 
     const livekit = liveKitConfig(config);
-    if ('missing' in livekit) {
-      return reply.code(503).send({
-        error: `LiveKit is not configured on the server: set ${livekit.missing.join(', ')}.`,
-      });
+    if ('problem' in livekit) {
+      return reply.code(503).send({ error: `Calls are off: ${livekit.problem}` });
     }
 
     const [call] = await db

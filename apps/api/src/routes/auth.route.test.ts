@@ -34,11 +34,12 @@ describe.skipIf(!hasDb)('APP_PASSWORD (real Postgres)', () => {
         pool,
         db,
         catalog: testCatalog,
+        livekitCheck: null,
       },
       { webDistDir: '/nonexistent' },
     );
     open = await buildApp(
-      { config: loadConfig(base), pool, db, catalog: testCatalog },
+      { config: loadConfig(base), pool, db, catalog: testCatalog, livekitCheck: null },
       { webDistDir: '/nonexistent' },
     );
   });

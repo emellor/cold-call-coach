@@ -281,6 +281,13 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
   - The web's `AuthGate` asks `GET /api/auth/session` first. Any other 401 fires
     `SIGNED_OUT_EVENT`. It fails open when the API can't be reached, and the API still
     refuses.
+- **LiveKit keys.** A wrong key pair used to show only as a call dropping at the first ring.
+  - `liveKitPairProblem` (core) refuses a room token from LiveKit's "Generate Token" as the
+    secret, and a swapped pair. Both apps' configs use it, and they trim pasted values.
+  - The API's `LiveKitCheck` asks LiveKit (`listRooms`) whether it accepts the pair, keeps
+    the verdict for a minute, and `GET /api/health` reports a refusal as the calls reason.
+  - `useCall` ignores the disconnect LiveKit reports for a refused join, so the dial error
+    names the refusal (`LIVEKIT_REFUSED_TOKEN`) instead of a dropped connection.
 - **Render** (`render.yaml`).
   - Builds run `corepack pnpm`, which needs no global install (`npm install -g pnpm` is
     reported to fail on Render with EROFS). Start and pre-deploy commands are plain

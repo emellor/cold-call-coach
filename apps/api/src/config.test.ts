@@ -92,6 +92,35 @@ describe('liveKitConfig', () => {
 
   it('names the missing ones, treating blank .env lines as unset', () => {
     const config = loadConfig({ LIVEKIT_URL: '', LIVEKIT_API_KEY: 'k', LIVEKIT_API_SECRET: '' });
-    expect(liveKitConfig(config)).toEqual({ missing: ['LIVEKIT_URL', 'LIVEKIT_API_SECRET'] });
+    expect(liveKitConfig(config)).toEqual({
+      problem: 'set LIVEKIT_URL, LIVEKIT_API_SECRET on the API.',
+    });
+  });
+
+  it('drops the space or newline a pasted value brings with it', () => {
+    const config = loadConfig({
+      LIVEKIT_URL: ' wss://x.livekit.cloud\n',
+      LIVEKIT_API_KEY: 'k ',
+      LIVEKIT_API_SECRET: '\ts\n',
+      ANTHROPIC_API_KEY: '   ',
+    });
+    expect(liveKitConfig(config)).toEqual({
+      url: 'wss://x.livekit.cloud',
+      apiKey: 'k',
+      apiSecret: 's',
+    });
+    expect(config.ANTHROPIC_API_KEY).toBeUndefined();
+  });
+
+  it('refuses a room token from "Generate Token" as the secret, saying where the secret is', () => {
+    const config = loadConfig({
+      LIVEKIT_URL: 'wss://x.livekit.cloud',
+      LIVEKIT_API_KEY: 'APIaB3cD4eF5gH6',
+      LIVEKIT_API_SECRET: 'eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJBUEkifQ.c2ln',
+    });
+    const result = liveKitConfig(config);
+    expect('problem' in result && result.problem).toMatch(
+      /is a room token.*shows a secret only once/,
+    );
   });
 });

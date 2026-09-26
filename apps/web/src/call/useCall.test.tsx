@@ -1,8 +1,9 @@
 import { act, renderHook } from '@testing-library/react';
-import { RpcError } from 'livekit-client';
+import { ConnectionError, RpcError } from 'livekit-client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   HANG_UP_GRACE_MS,
+  LIVEKIT_REFUSED_TOKEN,
   NO_ANSWER_MS,
   describeOutcome,
   reviewPathAfter,
@@ -246,6 +247,26 @@ describe('useCall', () => {
     lastRoom().localParticipant.setMicrophoneEnabled.mockRejectedValueOnce(blocked);
     await act(() => dialling);
     expect(result.current.view.message).toMatch(/Microphone access was blocked/);
+  });
+
+  it('says LiveKit refused the token, not that a call it never let through dropped', async () => {
+    mockCreateCall();
+    const { result } = renderHook(() => useCall());
+    const dialling = result.current.dial(request);
+    const room = lastRoom();
+    room.connect.mockImplementationOnce(() => {
+      // As livekit-client does: a refused join is reported as a disconnect, then rejected.
+      room.emit('disconnected', 5);
+      return Promise.reject(
+        ConnectionError.notAllowed('could not establish signal connection', 401),
+      );
+    });
+    await act(() => dialling);
+    expect(result.current.view).toMatchObject({
+      phase: 'ended',
+      outcome: 'error',
+      message: LIVEKIT_REFUSED_TOKEN,
+    });
   });
 
   it('gives up with a hint when nobody answers', async () => {
