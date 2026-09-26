@@ -1,18 +1,18 @@
-import {
-  RoomAudioRenderer,
-  RoomContext,
-  StartAudio,
-  useVoiceAssistant,
-} from '@livekit/components-react';
-import { useEffect, useState } from 'react';
+import { RoomContext, StartAudio, useVoiceAssistant } from '@livekit/components-react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { AgentAudio } from '../avatar/AgentAudio.tsx';
+import { AvatarStage } from '../avatar/AvatarStage.tsx';
+import { AvatarStore } from '../avatar/avatarStore.ts';
+import { DEV_MOODS, type Mood } from '../avatar/config.ts';
 import { type CallView, useCall } from '../call/useCall.ts';
 import { PhoneIcon, PhoneOffIcon } from '../components/icons.tsx';
 import { LatencyPanel } from '../components/LatencyPanel.tsx';
 import { SystemStatus } from '../components/SystemStatus.tsx';
 import { Transcript } from '../components/Transcript.tsx';
 import { formatClock } from '../lib/stats.ts';
+import { usePersistentFlag } from '../lib/usePersistentFlag.ts';
 
-/** M1 has one scenario; M3 adds the picker. */
+/** M1/M2 have one scenario; M3 adds the picker. */
 const SCENARIO = {
   id: 'medium-finance-director',
   title: 'Busy finance director',
@@ -25,8 +25,22 @@ const isLive = (phase: CallView['phase']) =>
   phase === 'dialling' || phase === 'ringing' || phase === 'connected';
 
 export function CallPage() {
+  const [avatarStore] = useState(() => new AvatarStore());
+  const { controller } = useSyncExternalStore(avatarStore.subscribe, avatarStore.getSnapshot);
+  const [phoneMode, setPhoneMode] = usePersistentFlag('ccc.phoneMode', false);
+  const [lipSyncDelay, setLipSyncDelay] = usePersistentFlag('ccc.lipSyncDelay', false);
+  const [devMood, setDevMood] = useState<Mood>('neutral');
   const { view, dial, hangUp } = useCall();
   const live = isLive(view.phase);
+
+  useEffect(() => controller?.setLipSyncDelay(lipSyncDelay), [controller, lipSyncDelay]);
+  useEffect(() => controller?.setMood(devMood), [controller, devMood]);
+
+  const onDial = () => {
+    // Inside the click: the avatar's audio context may only start from a user gesture.
+    controller?.resumeAudio();
+    void dial({ scenarioId: SCENARIO.id, mode: 'coached' });
+  };
 
   return (
     <RoomContext.Provider value={view.room}>
@@ -37,14 +51,29 @@ export function CallPage() {
         </header>
 
         <main className="grid flex-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_380px]">
-          <section
-            aria-label="Call"
-            className="flex min-h-80 flex-col items-center justify-center gap-3 rounded-xl border border-slate-800 bg-slate-900/60 p-8 text-center"
-          >
-            <p className="text-sm text-slate-400">{SCENARIO.title}</p>
-            <h2 className="text-2xl font-semibold">{SCENARIO.prospect}</h2>
-            <p className="text-sm text-slate-400">{SCENARIO.role}</p>
-            <CallStatus view={view} prospect={SCENARIO.firstName} />
+          <section aria-label="Call" className="flex min-w-0 flex-col gap-3">
+            <AvatarStage
+              store={avatarStore}
+              phoneMode={phoneMode}
+              name={SCENARIO.prospect}
+              role={SCENARIO.role}
+            >
+              <div className="absolute top-3 left-3">
+                <StatusChip view={view} prospect={SCENARIO.firstName} />
+              </div>
+              {view.phase === 'ended' && (
+                <div
+                  role="alert"
+                  className="absolute inset-x-0 top-1/2 mx-auto w-fit max-w-md -translate-y-1/2 rounded-lg bg-slate-950/85 px-5 py-3 text-center"
+                >
+                  <p className="font-medium">Call ended</p>
+                  {view.message && <p className="mt-1 text-sm text-slate-300">{view.message}</p>}
+                </div>
+              )}
+            </AvatarStage>
+            <p className="text-sm text-slate-400">
+              {SCENARIO.title}. Put your headset on, press Dial, and get a meeting.
+            </p>
           </section>
 
           <aside className="flex min-h-0 flex-col rounded-xl border border-slate-800 bg-slate-900/60">
@@ -62,7 +91,16 @@ export function CallPage() {
           </aside>
         </main>
 
-        <footer className="flex justify-center border-t border-slate-800 p-4">
+        <footer className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 border-t border-slate-800 px-6 py-4">
+          <div className="flex flex-wrap items-center gap-4 text-sm text-slate-300">
+            <Toggle label="Phone mode" checked={phoneMode} onChange={setPhoneMode} />
+            <Toggle
+              label="Delay voice 0.1 s (lip sync)"
+              checked={lipSyncDelay}
+              onChange={setLipSyncDelay}
+            />
+          </div>
+
           {live ? (
             <button
               type="button"
@@ -74,16 +112,32 @@ export function CallPage() {
           ) : (
             <button
               type="button"
-              onClick={() => void dial({ scenarioId: SCENARIO.id, mode: 'coached' })}
+              onClick={onDial}
               className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-6 py-3 font-medium text-white hover:bg-emerald-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
             >
               <PhoneIcon /> {view.phase === 'ended' ? 'Dial again' : 'Dial'}
             </button>
           )}
+
+          <div className="flex justify-end">
+            {import.meta.env.DEV && (
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                Mood (dev)
+                <select
+                  value={devMood}
+                  onChange={(e) => setDevMood(e.target.value as Mood)}
+                  className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-slate-200"
+                >
+                  {DEV_MOODS.map((mood) => (
+                    <option key={mood}>{mood}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
         </footer>
 
-        {/* M1 plays the agent's audio directly; M2 routes it through the avatar instead. */}
-        {live && view.room && <RoomAudioRenderer room={view.room} />}
+        {live && view.room && <AgentAudio controller={controller} />}
         {live && view.room && (
           <StartAudio
             label="Click to allow audio"
@@ -95,28 +149,37 @@ export function CallPage() {
   );
 }
 
-function CallStatus({ view, prospect }: { view: CallView; prospect: string }) {
+function Toggle(props: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2">
+      <input
+        type="checkbox"
+        checked={props.checked}
+        onChange={(e) => props.onChange(e.target.checked)}
+        className="size-4 accent-sky-500"
+      />
+      {props.label}
+    </label>
+  );
+}
+
+function StatusChip({ view, prospect }: { view: CallView; prospect: string }) {
+  const chip = 'rounded-full bg-slate-950/70 px-3 py-1 text-sm backdrop-blur-sm';
   switch (view.phase) {
     case 'idle':
-      return <p className="mt-4 text-slate-300">Put your headset on and press Dial.</p>;
-    case 'dialling':
-      return <p className="mt-4 text-slate-300">Dialling…</p>;
-    case 'ringing':
-      return (
-        <p className="mt-4 animate-pulse text-slate-200 motion-reduce:animate-none">Ringing…</p>
-      );
-    case 'connected':
-      return <Connected since={view.connectedAt} prospect={prospect} />;
     case 'ended':
-      return (
-        <p role="alert" className="mt-4 max-w-md text-slate-200">
-          Call ended. {view.message}
-        </p>
-      );
+      return null;
+    case 'dialling':
+      return <p className={chip}>Dialling…</p>;
+    case 'ringing':
+      return <p className={`${chip} animate-pulse motion-reduce:animate-none`}>Ringing…</p>;
+    case 'connected':
+      return <Connected className={chip} since={view.connectedAt} prospect={prospect} />;
   }
 }
 
-function Connected({ since, prospect }: { since: number | undefined; prospect: string }) {
+function Connected(props: { className: string; since: number | undefined; prospect: string }) {
+  const { since, prospect } = props;
   const { state } = useVoiceAssistant();
   const [elapsedS, setElapsedS] = useState(0);
   useEffect(() => {
@@ -127,17 +190,15 @@ function Connected({ since, prospect }: { since: number | undefined; prospect: s
 
   const activity =
     state === 'speaking'
-      ? `${prospect} is speaking`
+      ? `${prospect} speaking`
       : state === 'thinking'
-        ? `${prospect} is thinking`
-        : 'Listening';
+        ? `${prospect} thinking`
+        : 'listening';
 
   return (
-    <div className="mt-4 flex flex-col items-center gap-1">
-      <p className="font-medium text-emerald-400">Connected · {formatClock(elapsedS)}</p>
-      <p className="text-sm text-slate-400" aria-live="polite">
-        {activity}
-      </p>
-    </div>
+    <p className={props.className} aria-live="polite">
+      <span className="font-medium text-emerald-400">● {formatClock(elapsedS)}</span>
+      <span className="ml-2 text-slate-300">{activity}</span>
+    </p>
   );
 }

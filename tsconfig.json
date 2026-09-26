@@ -1,7 +1,10 @@
 {
   "extends": "./tsconfig.node.json",
   "compilerOptions": {
-    "lib": ["ES2023", "DOM"]
+    "lib": ["ES2023", "DOM"],
+    // scripts/*.mjs are plain JS with JSDoc types, checked like the TS.
+    "allowJs": true,
+    "checkJs": true
   },
-  "include": ["vitest.config.ts", "vitest.setup.jsdom.ts", "scripts/**/*.ts"]
+  "include": ["vitest.config.ts", "vitest.setup.jsdom.ts", "scripts/**/*.ts", "scripts/**/*.mjs"]
 }

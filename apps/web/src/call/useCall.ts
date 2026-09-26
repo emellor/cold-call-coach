@@ -9,6 +9,7 @@ import {
 import { DisconnectReason, Room, RoomEvent } from 'livekit-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { z } from 'zod';
+import { playHangUpClick } from '../audio/click.ts';
 import { RingTone } from '../audio/ringTone.ts';
 import { ApiRequestError, createCall } from '../lib/api.ts';
 
@@ -67,6 +68,8 @@ export function useCall() {
   const roomRef = useRef<Room | null>(null);
   const ringRef = useRef<RingTone | null>(null);
   const noAnswerRef = useRef<number | undefined>(undefined);
+  /** True from joining the room until the call ends: only such a call ends with a click. */
+  const liveRef = useRef(false);
 
   const stopRinging = useCallback(() => {
     ringRef.current?.stop();
@@ -77,6 +80,10 @@ export function useCall() {
   const finish = useCallback(
     (outcome: CallOutcome | undefined, message?: string) => {
       stopRinging();
+      if (liveRef.current) {
+        liveRef.current = false;
+        playHangUpClick();
+      }
       const room = roomRef.current;
       roomRef.current = null;
       setView((v) =>
@@ -124,6 +131,7 @@ export function useCall() {
       try {
         const call = await createCall(request);
         await room.connect(call.url, call.token);
+        liveRef.current = true;
         setView((v) =>
           v.phase === 'dialling' ? { ...v, phase: 'ringing', callId: call.callId } : v,
         );
