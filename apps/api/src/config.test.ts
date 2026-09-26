@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigError, DEV_DATABASE_URL, loadConfig } from './config.ts';
+import { ConfigError, DEV_DATABASE_URL, liveKitConfig, loadConfig } from './config.ts';
 
 describe('loadConfig', () => {
   it('applies defaults and falls back to the docker-compose database outside production', () => {
@@ -22,5 +22,25 @@ describe('loadConfig', () => {
 
   it('rejects a non-postgres URL', () => {
     expect(() => loadConfig({ DATABASE_URL: 'mysql://x' })).toThrowError(/postgres:\/\//);
+  });
+});
+
+describe('liveKitConfig', () => {
+  it('returns the settings when all three are present', () => {
+    const config = loadConfig({
+      LIVEKIT_URL: 'wss://x.livekit.cloud',
+      LIVEKIT_API_KEY: 'k',
+      LIVEKIT_API_SECRET: 's',
+    });
+    expect(liveKitConfig(config)).toEqual({
+      url: 'wss://x.livekit.cloud',
+      apiKey: 'k',
+      apiSecret: 's',
+    });
+  });
+
+  it('names the missing ones, treating blank .env lines as unset', () => {
+    const config = loadConfig({ LIVEKIT_URL: '', LIVEKIT_API_KEY: 'k', LIVEKIT_API_SECRET: '' });
+    expect(liveKitConfig(config)).toEqual({ missing: ['LIVEKIT_URL', 'LIVEKIT_API_SECRET'] });
   });
 });

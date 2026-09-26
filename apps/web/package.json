@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@ccc/contracts": "workspace:*",
+    "@livekit/components-react": "^2.9.24",
+    "livekit-client": "^2.22.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "wouter": "^3.11.0",

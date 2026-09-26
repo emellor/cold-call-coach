@@ -1,10 +1,10 @@
 import { Route, Switch } from 'wouter';
-import { HomePage } from './pages/HomePage.tsx';
+import { CallPage } from './pages/CallPage.tsx';
 
 export function App() {
   return (
     <Switch>
-      <Route path="/" component={HomePage} />
+      <Route path="/" component={CallPage} />
       <Route>
         <main className="mx-auto max-w-2xl p-8">
           <h1 className="text-2xl font-semibold">Page not found</h1>
