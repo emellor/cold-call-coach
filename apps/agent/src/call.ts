@@ -21,6 +21,8 @@ export interface CallControllerDeps {
   random?: () => number;
   /** She has just picked up (before `connected` is published). */
   onConnected?: () => void;
+  /** The call has just ended (before `ended` is published). */
+  onEnded?: (ending: CallEnding) => void;
 }
 
 /** How the call ended: the outcome, why, which side ended it, and when (epoch ms). */
@@ -103,6 +105,7 @@ export class CallController {
     const outcome = this.#meeting === undefined ? endedBy : 'meeting_booked';
     const reason = this.#meeting ?? why;
     this.#ended = { outcome, ...(reason ? { reason } : {}), endedBy, at: Date.now() };
+    this.#deps.onEnded?.(this.#ended);
     await this.#deps.publisher.publish(Topics.callState, {
       phase: 'ended',
       outcome,

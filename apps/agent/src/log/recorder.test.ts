@@ -153,4 +153,65 @@ describe('CallRecorder', () => {
     expect(log).toMatchObject({ connectedAt: null, durationMs: 0, turns: [] });
     expect(CallLog.safeParse(log).success).toBe(true);
   });
+
+  it('prices the hint lane apart from the prospect and the judge', () => {
+    const { recorder } = recorderAt();
+    const usage = {
+      inputTokens: 1_000,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      outputTokens: 100,
+    };
+    recorder.usage('hint', 'claude-opus-5', usage);
+    const log = recorder.build({ outcome: 'ended_by_rep', stateAfterRepTurn: () => null });
+    expect(log.usage.hint).toMatchObject({ calls: 1, costUsd: 0.0075 });
+    expect(log.usage).not.toHaveProperty('judge');
+  });
+
+  describe('rewind', () => {
+    function threeTurns() {
+      const { recorder, at } = recorderAt();
+      at(0);
+      recorder.connected();
+      const turn = (speaker: 'rep' | 'prospect', text: string, from: number, to: number) => {
+        const timing = { startedSpeakingAt: sec(from), stoppedSpeakingAt: sec(to), committedAt: 0 };
+        if (speaker === 'rep') recorder.repTurn({ text, timing, repTurn: 1 });
+        else recorder.prospectTurn({ text, timing, interrupted: false, state: null });
+      };
+      turn('prospect', 'Claire Hughes.', 0, 800);
+      turn('rep', 'Can I send you a brochure?', 1_000, 3_000);
+      turn('prospect', 'Just email me.', 3_500, 4_500);
+      return recorder;
+    }
+
+    it('drops the rep’s last turn and her reply, and says what was taken back', () => {
+      const recorder = threeTurns();
+      // Words heard before the rewind must not leak into the retake.
+      recorder.sttFinal([{ text: 'stray', startTime: 0, endTime: 0.2 }]);
+      expect(recorder.rewind()).toEqual({
+        beforeTurn: 2,
+        tookBack: 'Can I send you a brochure?',
+        herReply: 'Just email me.',
+      });
+      expect(recorder.metricTurns().map((t) => t.text)).toEqual(['Claire Hughes.']);
+      // The retake takes the freed index.
+      recorder.repTurn({
+        text: 'What does energy cost you today?',
+        timing: { startedSpeakingAt: sec(6_000), stoppedSpeakingAt: sec(8_000), committedAt: 0 },
+        repTurn: 1,
+      });
+      const log = recorder.build({ outcome: 'ended_by_rep', stateAfterRepTurn: () => null });
+      expect(log.turns.map((t) => [t.idx, t.text])).toEqual([
+        [0, 'Claire Hughes.'],
+        [1, 'What does energy cost you today?'],
+      ]);
+      expect(log.turns[1]?.words).toBeNull();
+      expect(CallLog.safeParse(log).success).toBe(true);
+    });
+
+    it('has nothing to take back before the rep has spoken', () => {
+      const { recorder } = recorderAt();
+      expect(recorder.rewind()).toBeNull();
+    });
+  });
 });

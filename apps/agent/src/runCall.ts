@@ -5,7 +5,7 @@ import {
   REP_IDENTITY,
   Topics,
 } from '@ccc/contracts';
-import { buildProspectSystemPrompt } from '@ccc/core';
+import { buildHintSystemPrompt, buildHintUserPrompt, buildProspectSystemPrompt } from '@ccc/core';
 import { type JobContext, type VAD, inference, log, voice } from '@livekit/agents';
 import * as cartesia from '@livekit/agents-plugin-cartesia';
 import * as deepgram from '@livekit/agents-plugin-deepgram';
@@ -13,6 +13,10 @@ import { CallController } from './call.ts';
 import { chatContextToTurns, repSpeakingSeconds } from './chat.ts';
 import { createClaude } from './claude/client.ts';
 import { type CallConfig, readCallConfig } from './config.ts';
+import { claudeHints } from './coach/hint.ts';
+import { LiveCoach } from './coach/liveCoach.ts';
+import { CallControls } from './controls/controls.ts';
+import { registerControls } from './controls/rpc.ts';
 import { claudeJudge } from './judge/judge.ts';
 import { LatencyTracker } from './latency.ts';
 import { postCallLog } from './log/post.ts';
@@ -106,6 +110,13 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
 
   const recorder = new CallRecorder();
   const claude = createClaude(config.ANTHROPIC_API_KEY);
+  // The live coach (coached calls only): metrics, the stage tracker and tips.
+  const coach = new LiveCoach({
+    mode: meta.mode,
+    publisher,
+    stages: () => brain.stages,
+    repStopLagMs: vad.minSilenceDuration ?? 0,
+  });
   const brain = new ProspectBrain({
     scenario,
     product,
@@ -118,7 +129,7 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
     }),
     logger,
     onState: (payload) => void publisher.publish(Topics.prospectState, payload),
-    onJudged: ({ turn, judged, judge, before, after }) =>
+    onJudged: ({ turn, judged, judge, before, after }) => {
       recorder.event('judgement', {
         turn,
         judged,
@@ -130,7 +141,9 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
         tip: judge.tip,
         interest: [before.interest, after.interest],
         patience: [before.patience, after.patience],
-      }),
+      });
+      coach.judged(turn, judge);
+    },
   });
   const ledger = new ReplyLedger();
   const agent = new ProspectAgent({
@@ -143,6 +156,7 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
     logger,
     onUsage: (model, usage) => recorder.usage('prospect', model, usage),
     onSttFinal: (words) => recorder.sttFinal(words),
+    paused: (): boolean => controls.paused,
   });
 
   const session = new voice.AgentSession({
@@ -173,7 +187,36 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
     shutdown: (reason) => ctx.shutdown(reason),
     logger,
     openingLine: scenario.prospect.openingLine,
-    onConnected: () => recorder.connected(),
+    onConnected: () => {
+      recorder.connected();
+      coach.connected();
+    },
+    onEnded: () => coach.ended(),
+  });
+
+  const latency = new LatencyTracker();
+  const hintSystem = buildHintSystemPrompt(scenario, product);
+  const controls = new CallControls({
+    mode: meta.mode,
+    session,
+    agent,
+    brain,
+    recorder,
+    coach,
+    controller,
+    hints: claudeHints({
+      messages: claude.beta.messages,
+      model: config.COACH_MODEL,
+      effort: config.COACH_EFFORT,
+      logger,
+      onUsage: (model, usage) => recorder.usage('hint', model, usage),
+    }),
+    hintPrompt: () => ({
+      system: hintSystem,
+      user: buildHintUserPrompt(chatContextToTurns(agent.chatCtx)),
+    }),
+    latency,
+    logger,
   });
 
   // Whatever ends the call (her, the rep, the time limit, a crash), the log
@@ -195,7 +238,6 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
     );
   });
 
-  const latency = new LatencyTracker();
   session.on(voice.AgentSessionEventTypes.ConversationItemAdded, ({ item }) => {
     const payload = latency.onItem(item);
     if (payload) {
@@ -216,20 +258,35 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
         longestMonologueSec: repSpeakingSeconds(item.metrics),
       });
       recorder.repTurn({ text, timing, repTurn });
+      coach.turnsChanged(recorder.metricTurns());
     } else if (item.role === 'assistant') {
       recorder.prospectTurn({ text, timing, interrupted: item.interrupted, state: brain.state });
+      coach.turnsChanged(recorder.metricTurns());
       // A reply acts only once heard in full; one she was cut off in does nothing.
       const reply = ledger.committed(item.extra[REPLY_ID_KEY]);
       if (reply && !item.interrupted) {
         actOnReply(reply, brain.repTurns, {
           brain,
-          controller,
+          controller: {
+            recordMeeting: async (when) => {
+              await controller.recordMeeting(when);
+              coach.meetingBooked();
+            },
+            end: (outcome, reason) => controller.end(outcome, reason),
+          },
           logger,
           record: (kind, data) => recorder.event(kind, data),
         }).catch((error: unknown) => logger.error({ err: error }, 'acting on her reply failed'));
       }
     }
   });
+  // Who is speaking, live: the coach's talk clock and monologue timer.
+  session.on(voice.AgentSessionEventTypes.UserStateChanged, ({ newState, createdAt }) =>
+    coach.userState(newState, createdAt),
+  );
+  session.on(voice.AgentSessionEventTypes.AgentStateChanged, ({ newState, createdAt }) =>
+    coach.agentState(newState, createdAt),
+  );
   session.on(voice.AgentSessionEventTypes.Error, ({ error }) => {
     logger.warn({ err: error }, 'session error');
   });
@@ -247,6 +304,8 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
       inputOptions: { participantIdentity: REP_IDENTITY },
     });
     await ctx.connect();
+    const participant = ctx.room.localParticipant;
+    if (participant) registerControls(participant, controls, logger);
     await ctx.waitForParticipant(REP_IDENTITY);
     await controller.ringAndPickUp();
     if (controller.phase === 'connected') {

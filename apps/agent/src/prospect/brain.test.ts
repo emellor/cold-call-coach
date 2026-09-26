@@ -223,4 +223,99 @@ describe('ProspectBrain', () => {
       });
     });
   });
+
+  describe('rewindTo', () => {
+    it('restores her state from before the turn, and the retake gets its number', async () => {
+      const queue = [
+        judged({ gaveRelevantReason: true }, { stage: 'reason' }),
+        judged({ pushy: true }, { stage: 'close' }),
+      ];
+      const onState = vi.fn<(payload: ProspectStatePayload) => void>();
+      const brain = brainWith(() => Promise.resolve(queue.shift() ?? judged()), onState);
+      brain.repTurn(talk('Claire Hughes.', 'Energy bills?'), calm);
+      brain.repTurn(talk('Claire Hughes.', 'Energy bills?', 'Go on.', 'Book it now.'), calm);
+      await brain.settled();
+      const afterFirst = brain.history[0]!.after;
+      expect(brain.stages).toEqual(['reason', 'close']);
+
+      brain.rewindTo(2);
+      expect(brain.state).toEqual(afterFirst);
+      expect(brain.repTurns).toBe(1);
+      expect(brain.stages).toEqual(['reason']);
+      expect(onState).toHaveBeenLastCalledWith(brain.statePayload());
+      expect(
+        brain.repTurn(talk('Claire Hughes.', 'Energy bills?', 'Go on.', 'How so?'), calm),
+      ).toBe(2);
+    });
+
+    it('discards a judgement still running for the rewound turn', async () => {
+      const { judge, pending } = manualJudge();
+      const onJudged = vi.fn();
+      const brain = new ProspectBrain({ scenario, product, judge, logger: silentLogger, onJudged });
+      brain.repTurn(talk('Claire Hughes.', 'You must be busy.'), calm);
+      await vi.waitFor(() => expect(pending).toHaveLength(1));
+      brain.rewindTo(1);
+      pending[0]!.resolve(judged({ rude: true }));
+      await brain.settled();
+      expect(brain.state).toEqual({ turn: 0, interest: 20, patience: 55, painsRevealed: [] });
+      expect(brain.history).toEqual([]);
+      expect(onJudged).not.toHaveBeenCalled();
+      await expect(brain.judged(1)).resolves.toBeUndefined();
+    });
+
+    it('never asks the judge about a rewound turn still waiting in the queue', async () => {
+      const { judge, pending } = manualJudge();
+      const brain = brainWith(judge);
+      brain.repTurn(talk('Claire Hughes.', 'Got a minute?'), calm);
+      brain.repTurn(talk('Claire Hughes.', 'Got a minute?', 'Go on.', 'Buy now.'), calm);
+      brain.rewindTo(2);
+      await vi.waitFor(() => expect(pending).toHaveLength(1));
+      pending[0]!.resolve(judged({ askedPermission: true }));
+      await brain.settled();
+      expect(pending).toHaveLength(1);
+      expect(brain.history.map((t) => t.turn)).toEqual([1]);
+    });
+
+    it('forgets a meeting refusal made in reply to the rewound turn', async () => {
+      const brain = brainWith(() => Promise.resolve(judged({ askedForMeeting: true })));
+      brain.repTurn(talk('Claire Hughes.', 'Can we meet?'), calm);
+      await brain.settled();
+      await brain.agreeToMeeting('next week', 1);
+      expect(brain.note()).toContain('Meeting: nothing is agreed yet');
+      brain.rewindTo(1);
+      expect(brain.note()).not.toContain('Meeting: nothing is agreed yet');
+    });
+
+    it('stands down a meeting decision that was waiting on the rewound turn', async () => {
+      const { judge, pending } = manualJudge();
+      const brain = new ProspectBrain({
+        scenario: { ...scenario, state: { ...scenario.state, interest: 70 } },
+        product,
+        judge,
+        logger: silentLogger,
+      });
+      brain.repTurn(talk('Claire Hughes.', 'Tuesday at ten?'), calm);
+      const decision = brain.agreeToMeeting('Tuesday at 10am', 1);
+      await vi.waitFor(() => expect(pending).toHaveLength(1));
+      brain.rewindTo(1);
+      pending[0]!.resolve(judged({ askedForMeeting: true, proposedSpecificTime: true }));
+      await expect(decision).resolves.toEqual({
+        booked: false,
+        reason: 'the rep rewound that turn',
+      });
+      expect(brain.meeting).toBeNull();
+      expect(brain.note()).not.toContain('Meeting: nothing is agreed yet');
+    });
+
+    it('ignores a turn that does not exist', async () => {
+      const brain = brainWith(() => Promise.resolve(judged()));
+      brain.repTurn(talk('Claire Hughes.', 'Hi.'), calm);
+      await brain.settled();
+      const before = brain.state;
+      brain.rewindTo(0);
+      brain.rewindTo(2);
+      expect(brain.state).toBe(before);
+      expect(brain.repTurns).toBe(1);
+    });
+  });
 });

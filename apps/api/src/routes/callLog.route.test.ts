@@ -122,6 +122,42 @@ describe.skipIf(!hasDb)('the call log and its review (real Postgres)', () => {
     expect(row?.costUsd).toBeCloseTo(0.027);
   });
 
+  it('tells the review which practice controls the rep used, and counts the hint lane in the cost', async () => {
+    const { reviewer, calls: asked } = stubReviewer();
+    const app = await appWith(reviewer);
+    const id = await newCall();
+    const log = sampleLog();
+    const hintLane = { ...log.usage.judge!, calls: 1, costUsd: 0.004 };
+    const res = await post(app, id, {
+      ...log,
+      events: [
+        ...log.events,
+        { tMs: 12_500, kind: 'pause', payload: {} },
+        { tMs: 20_000, kind: 'resume', payload: { pausedMs: 7_500 } },
+        { tMs: 21_000, kind: 'hint', payload: { suggestions: ['a', 'b', 'c'], ms: 1_700 } },
+        {
+          tMs: 22_000,
+          kind: 'rewind',
+          payload: { beforeTurn: 4, tookBack: 'Can I send you a brochure?', herReply: null },
+        },
+      ],
+      usage: { ...log.usage, hint: hintLane },
+    });
+    expect(res.statusCode).toBe(200);
+    await app.reviewQueue.idle();
+
+    expect(asked[0]).toMatchObject({
+      controls: {
+        pauses: 1,
+        pausedMs: 7_500,
+        hints: 1,
+        rewinds: [{ beforeTurn: 4, tookBack: 'Can I send you a brochure?' }],
+      },
+    });
+    const [row] = await db.select().from(calls).where(eq(calls.id, id));
+    expect(row?.costUsd).toBeCloseTo(0.031);
+  });
+
   it('is idempotent: posting the same log twice leaves the same call and one review', async () => {
     const { reviewer, calls: asked } = stubReviewer();
     const app = await appWith(reviewer);

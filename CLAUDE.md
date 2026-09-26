@@ -173,6 +173,60 @@ pnpm simulate --persona good --runs 1 --review   # …plus a real post-call revi
 - **The web** moves to `/calls/:id` 1.5 s after a call she answered ends. That page polls
   every 2 s until the review settles, for up to 5 minutes. `/calls` is the history.
 
+## The live coach and the controls (M5)
+
+- **Exam calls get none of this.** The agent publishes no `coach.*` topic, and every
+  control except hang-up refuses. The web hides the panel and the buttons as well.
+- **`LiveCoach`** (`apps/agent/src/coach/`) publishes `coach.metrics` every 500 ms.
+  - Talking time and the monologue come from `TalkClock` (`core/coach/talkClock.ts`), fed by
+    LiveKit's `UserStateChanged`/`AgentStateChanged`. The VAD's `minSilenceDuration` is taken
+    off each of the rep's stops.
+  - Pace, fillers and questions are `computeMetrics` over the recorder's committed turns.
+  - The stage tracker is a pure function of the judged stages (`core/coach/stages.ts`), and
+    changes go out as a diff. A rewind can send `pending` to reset a stage.
+  - Tips pass `TipGate` (`core/coach/tipGate.ts`): warn only, one per 20 s. A tip that
+    arrives while both are speaking is held until the overlap ends, and dropped if that
+    takes more than 5 s.
+- **RPC**: `CallControls` (`apps/agent/src/controls/`) is registered on the agent's
+  participant after `ctx.connect()`.
+  - Only `REP_IDENTITY` may call it, and every answer is validated against `RpcMethods`.
+  - A `ControlError`'s message reaches the rep as an `RpcError`. Any other failure becomes a
+    generic one.
+  - The web finds the agent through `participant.isAgent`. A stand-in agent in a test needs
+    `kind: 'agent'` in its token.
+- **Pause**: the agent calls `input.setAudioEnabled(false)`, `clearUserTurn()` and
+  `interrupt()`.
+  - While paused, `ProspectAgent.onUserTurnCompleted` throws `StopResponse`, so a turn that
+    completes anyway never reaches the conversation.
+  - The web mutes the mic before asking the agent to pause, and waits for the agent before
+    unmuting on resume.
+- **Rewind**, in order (each step is part of the contract):
+  1. `interrupt()` and await it, so her cut-off reply is committed first.
+  2. `clearUserTurn()`.
+  3. `agent.updateChatCtx` with a copy cut just before the last user message. Earlier items
+     are never edited.
+  4. `brain.rewindTo(turn)`: queued or running judgements for that turn are cancelled, and
+     her state goes back to the turn's `before`.
+  5. `recorder.rewind()`: the rep's turn and her reply leave the log, which keeps the call
+     as it stands.
+  6. Her previous line again, with `session.say(line, { addToChatCtx: false })`.
+
+  Rewind is refused once a meeting is booked. `rewind.session.test.ts` runs the whole thing
+  on a real `AgentSession` in LiveKit's text-only mode.
+
+- **Hint**: `claudeHints` runs a structured-output call for `HintDraft` on
+  `COACH_MODEL`/`COACH_EFFORT`, with an 8 s cap.
+  - Its prompt (`core/coach/hint.ts`) never sees her private facts, objections or state; a
+    test asserts it.
+  - Usage is logged as the call's `hint` lane.
+- **The review** gets the controls from the `pause`, `resume`, `hint` and `rewind` events.
+  Their payloads have schemas in `contracts/callLog.ts`. The API tallies them with
+  `controlsUsed` into the prompt, and tells Claude not to mark the rep down for using them.
+- **Web**: `useCall` owns the controls, and `useShortcuts` owns Space, H, R and Esc.
+  - Shortcuts ignore typing and modifier keys.
+  - Space still presses a focused button rather than pausing.
+  - Tips and hints overlay the video, so the controls never move.
+
 ## The avatar (apps/web/src/avatar)
 
 - `AvatarController` wraps TalkingHead (3D) and HeadAudio (lip-sync from audio). The

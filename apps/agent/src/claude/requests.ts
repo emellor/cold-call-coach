@@ -1,8 +1,9 @@
 import type { BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/messages/messages';
-import { JudgeResult } from '@ccc/contracts';
+import { HintDraft, JudgeResult } from '@ccc/contracts';
 import {
   type ChatTurn,
   type Effort,
+  HINT_MAX_TOKENS,
   SERVER_FALLBACK_BETA,
   modelCapabilities,
   structuredFormat,
@@ -17,6 +18,7 @@ export const JUDGE_MAX_TOKENS = 2048;
 
 /** Built once: an unchanged schema is compiled once by the API and then cached. */
 const JUDGE_FORMAT = structuredFormat(JudgeResult);
+const HINT_FORMAT = structuredFormat(HintDraft);
 
 /** Effort and server-side refusal fallbacks, for the models that accept them (Haiku 4.5 takes neither). */
 function modelOptions(model: string, effort: Effort) {
@@ -71,6 +73,29 @@ export function judgeRequest(input: {
     ],
     messages: [{ role: 'user' as const, content: input.user }],
     output_config: { ...options.effort, format: JUDGE_FORMAT },
+    ...options.fallbacks,
+  };
+}
+
+/**
+ * The Hint button's request (PLAN.md §8.3): three lines as structured output,
+ * on the coach's model and effort. The system prompt is fixed for the call.
+ */
+export function hintRequest(input: {
+  model: string;
+  effort: Effort;
+  system: string;
+  user: string;
+}) {
+  const options = modelOptions(input.model, input.effort);
+  return {
+    model: input.model,
+    max_tokens: HINT_MAX_TOKENS,
+    system: [
+      { type: 'text' as const, text: input.system, cache_control: { type: 'ephemeral' as const } },
+    ],
+    messages: [{ role: 'user' as const, content: input.user }],
+    output_config: { ...options.effort, format: HINT_FORMAT },
     ...options.fallbacks,
   };
 }

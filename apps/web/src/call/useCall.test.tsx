@@ -1,6 +1,13 @@
 import { act, renderHook } from '@testing-library/react';
+import { RpcError } from 'livekit-client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NO_ANSWER_MS, describeOutcome, reviewPathAfter, useCall } from './useCall.ts';
+import {
+  HANG_UP_GRACE_MS,
+  NO_ANSWER_MS,
+  describeOutcome,
+  reviewPathAfter,
+  useCall,
+} from './useCall.ts';
 
 const fakes = vi.hoisted(() => {
   type Handler = (reader: { readAll(): Promise<string> }, info: { identity: string }) => unknown;
@@ -11,7 +18,16 @@ const fakes = vi.hoisted(() => {
     listeners = new Map<string, ((...args: unknown[]) => void)[]>();
     connect = vi.fn(() => Promise.resolve());
     startAudio = vi.fn(() => Promise.resolve());
-    localParticipant = { setMicrophoneEnabled: vi.fn(() => Promise.resolve()) };
+    localParticipant = {
+      setMicrophoneEnabled: vi.fn((_on: boolean) => Promise.resolve()),
+      /** The agent's answers, by method; a method missing here never answers. */
+      performRpc: vi.fn(
+        ({ method }: { destinationIdentity: string; method: string }): Promise<string> =>
+          FakeRoom.answers[method]?.() ?? new Promise<string>(() => {}),
+      ),
+    };
+    remoteParticipants = new Map([['agent-1', { identity: 'agent-1', isAgent: true }]]);
+    static answers: Record<string, () => Promise<string>> = {};
     disconnect = vi.fn(() => {
       this.emit('disconnected', 1);
       return Promise.resolve();
@@ -42,7 +58,8 @@ const fakes = vi.hoisted(() => {
   return { FakeRoom, ring };
 });
 
-vi.mock('livekit-client', () => ({
+vi.mock('livekit-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('livekit-client')>()),
   Room: fakes.FakeRoom,
   RoomEvent: { Disconnected: 'disconnected' },
   DisconnectReason: { CLIENT_INITIATED: 1 },
@@ -70,6 +87,7 @@ const request = { scenarioId: 'medium-finance-director', mode: 'coached' } as co
 describe('useCall', () => {
   beforeEach(() => {
     fakes.FakeRoom.instances = [];
+    fakes.FakeRoom.answers = {};
     fakes.ring.stop.mockClear();
   });
   afterEach(() => {
@@ -239,6 +257,195 @@ describe('useCall', () => {
   });
 });
 
+const answer = (body: unknown) => () => Promise.resolve(JSON.stringify(body));
+const refuse = (message: string) => () =>
+  Promise.reject(new RpcError(RpcError.ErrorCode.APPLICATION_ERROR, message));
+
+/** A coached (or exam) call she has answered. */
+async function connectedCall(mode: 'coached' | 'exam' = 'coached') {
+  mockCreateCall();
+  const hook = renderHook(() => useCall());
+  await act(() => hook.result.current.dial({ ...request, mode }));
+  await act(() => lastRoom().deliver('call.state', { phase: 'connected' }));
+  return hook;
+}
+
+const rpcMethods = () => lastRoom().localParticipant.performRpc.mock.calls.map(([p]) => p.method);
+const mic = () => lastRoom().localParticipant.setMicrophoneEnabled.mock.calls.map(([on]) => on);
+
+describe('useCall: the live coach', () => {
+  beforeEach(() => {
+    fakes.FakeRoom.instances = [];
+    fakes.FakeRoom.answers = {};
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('fills the panel from the coach topics and drops malformed messages', async () => {
+    const { result } = await connectedCall();
+    const metrics = {
+      elapsedSec: 12.5,
+      talkRatio: 0.62,
+      repWpm: 158,
+      coreFillers: 2,
+      softFillers: 1,
+      fillersPerMin: 1.4,
+      questionsOpen: 1,
+      questionsClosed: 2,
+      currentMonologueSec: 8.2,
+      longestMonologueSec: 14,
+    };
+    await act(() => lastRoom().deliver('coach.metrics', metrics));
+    await act(() => lastRoom().deliver('coach.metrics', { elapsedSec: -1 }));
+    await act(() => lastRoom().deliver('coach.stage', { stage: 'opener', status: 'done' }));
+    await act(() => lastRoom().deliver('coach.stage', { stage: 'reason', status: 'active' }));
+    await act(() => lastRoom().deliver('coach.stage', { stage: 'pitch', status: 'active' }));
+    const tip = { id: 'tip-1', turn: 2, severity: 'warn', text: 'Ask an open question.' };
+    await act(() => lastRoom().deliver('coach.tip', tip));
+    expect(result.current.view.coach).toEqual({
+      metrics,
+      stages: {
+        opener: 'done',
+        reason: 'active',
+        discovery: 'pending',
+        objections: 'pending',
+        next_step: 'pending',
+      },
+      tip,
+    });
+  });
+});
+
+describe('useCall: the controls', () => {
+  beforeEach(() => {
+    fakes.FakeRoom.instances = [];
+    fakes.FakeRoom.answers = {};
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('pauses by muting the mic before telling the agent, and resumes the other way round', async () => {
+    fakes.FakeRoom.answers = {
+      'call.pause': answer({ ok: true }),
+      'call.resume': answer({ ok: true }),
+    };
+    const { result } = await connectedCall();
+    await act(() => result.current.togglePause());
+    expect(result.current.view.paused).toBe(true);
+    expect(mic()).toEqual([true, false]);
+    expect(lastRoom().localParticipant.performRpc).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        destinationIdentity: 'agent-1',
+        method: 'call.pause',
+        payload: '',
+      }),
+    );
+
+    await act(() => result.current.togglePause());
+    expect(result.current.view.paused).toBe(false);
+    expect(rpcMethods()).toEqual(['call.pause', 'call.resume']);
+    expect(mic()).toEqual([true, false, true]);
+    expect(result.current.view.busy).toBeUndefined();
+  });
+
+  it('unpauses and says why when the agent refuses', async () => {
+    fakes.FakeRoom.answers = { 'call.pause': refuse('Pause is off in exam mode.') };
+    const { result } = await connectedCall();
+    await act(() => result.current.togglePause());
+    expect(result.current.view).toMatchObject({
+      paused: false,
+      notice: { text: 'Pause is off in exam mode.', tone: 'error' },
+    });
+    expect(mic()).toEqual([true, false, true]);
+  });
+
+  it('shows a hint: loading, then three lines, or the reason it failed', async () => {
+    let release = (_text: string) => {};
+    fakes.FakeRoom.answers = {
+      'call.hint': () =>
+        new Promise<string>((resolve) => {
+          release = resolve;
+        }),
+    };
+    const { result } = await connectedCall();
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.hint();
+    });
+    expect(result.current.view.hint).toEqual({ status: 'loading' });
+    await act(async () => {
+      release(JSON.stringify({ suggestions: ['One?', 'Two?', 'Three?'] }));
+      await pending;
+    });
+    expect(result.current.view.hint).toEqual({
+      status: 'ready',
+      suggestions: ['One?', 'Two?', 'Three?'],
+    });
+    act(() => result.current.dismissHint());
+    expect(result.current.view.hint).toBeUndefined();
+
+    fakes.FakeRoom.answers['call.hint'] = refuse('The hint took too long. Try again.');
+    await act(() => result.current.hint());
+    expect(result.current.view.hint).toEqual({
+      status: 'error',
+      message: 'The hint took too long. Try again.',
+    });
+  });
+
+  it('rewinds, unmuting a paused call, and passes on a refusal as it is', async () => {
+    fakes.FakeRoom.answers = {
+      'call.pause': answer({ ok: true }),
+      'call.rewind': answer({ ok: true }),
+    };
+    const { result } = await connectedCall();
+    await act(() => result.current.togglePause());
+    await act(() => result.current.rewind());
+    expect(result.current.view).toMatchObject({
+      paused: false,
+      notice: { text: "Rewound. She'll say her line again: retake your turn.", tone: 'info' },
+    });
+    expect(mic().at(-1)).toBe(true);
+
+    fakes.FakeRoom.answers['call.rewind'] = answer({
+      ok: false,
+      reason: "There's no turn of yours to take back yet.",
+    });
+    await act(() => result.current.rewind());
+    expect(result.current.view.notice).toMatchObject({
+      text: "There's no turn of yours to take back yet.",
+    });
+  });
+
+  it('offers no controls in an exam call, and none before she picks up', async () => {
+    const exam = await connectedCall('exam');
+    await act(() => exam.result.current.togglePause());
+    await act(() => exam.result.current.hint());
+    await act(() => exam.result.current.rewind());
+    expect(rpcMethods()).toEqual([]);
+
+    mockCreateCall();
+    const ringing = renderHook(() => useCall());
+    await act(() => ringing.result.current.dial(request));
+    await act(() => ringing.result.current.togglePause());
+    expect(rpcMethods()).toEqual([]);
+  });
+
+  it('tells the agent it is hanging up, and leaves the room without waiting long', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { result } = await connectedCall();
+    act(() => result.current.hangUp());
+    expect(result.current.view).toMatchObject({ phase: 'ended', outcome: 'ended_by_rep' });
+    expect(rpcMethods()).toEqual(['call.hangup']);
+    expect(lastRoom().disconnect).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(HANG_UP_GRACE_MS));
+    expect(lastRoom().disconnect).toHaveBeenCalled();
+  });
+});
+
 describe('describeOutcome', () => {
   it('puts the agent’s reason into words for the rep', () => {
     expect(describeOutcome('meeting_booked', 'Thursday at 2pm')).toBe(
@@ -264,6 +471,6 @@ describe('reviewPathAfter', () => {
   it('stays put for a live call, or one she never answered', () => {
     expect(reviewPathAfter({ ...base, phase: 'connected', connectedAt: 1 })).toBeNull();
     expect(reviewPathAfter({ ...base, phase: 'ended' })).toBeNull();
-    expect(reviewPathAfter({ latency: [], phase: 'ended', connectedAt: 1 })).toBeNull();
+    expect(reviewPathAfter({ phase: 'ended', connectedAt: 1 })).toBeNull();
   });
 });

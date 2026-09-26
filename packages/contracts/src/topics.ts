@@ -41,11 +41,38 @@ export type ProspectStatePayload = z.infer<typeof ProspectStatePayload>;
 export const TrackerStage = z.enum(['opener', 'reason', 'discovery', 'objections', 'next_step']);
 export type TrackerStage = z.infer<typeof TrackerStage>;
 
-export const CoachStagePayload = z.object({
-  stage: TrackerStage,
-  status: z.enum(['active', 'done']),
-});
+/** `pending` resets a stage, after a rewind takes back the turn that reached it. */
+export const StageStatus = z.enum(['pending', 'active', 'done']);
+export type StageStatus = z.infer<typeof StageStatus>;
+
+export const CoachStagePayload = z.object({ stage: TrackerStage, status: StageStatus });
 export type CoachStagePayload = z.infer<typeof CoachStagePayload>;
+
+/** The live coach panel's numbers (PLAN.md §8.1), about twice a second in coached calls. */
+export const CoachMetricsPayload = z.object({
+  elapsedSec: z.number().nonnegative(),
+  /** Rep share of speaking time so far, 0–1; null before anyone has spoken. */
+  talkRatio: z.number().min(0).max(1).nullable(),
+  repWpm: z.number().nonnegative().nullable(),
+  coreFillers: z.int().nonnegative(),
+  softFillers: z.int().nonnegative(),
+  fillersPerMin: z.number().nonnegative().nullable(),
+  questionsOpen: z.int().nonnegative(),
+  questionsClosed: z.int().nonnegative(),
+  /** The monologue under way now; 0 once the rep has stopped or she has spoken. */
+  currentMonologueSec: z.number().nonnegative(),
+  longestMonologueSec: z.number().nonnegative(),
+});
+export type CoachMetricsPayload = z.infer<typeof CoachMetricsPayload>;
+
+/** A live coaching tip from the judge (coached calls only; at most one every 20 s). */
+export const CoachTipPayload = z.object({
+  id: z.string().min(1),
+  turn: z.int().positive(),
+  severity: z.enum(['info', 'warn']),
+  text: z.string().min(1),
+});
+export type CoachTipPayload = z.infer<typeof CoachTipPayload>;
 
 export interface Topic<S extends z.ZodType> {
   readonly name: string;
@@ -59,6 +86,8 @@ export const Topics = {
   debugLatency: topic('debug.latency', DebugLatencyPayload),
   prospectState: topic('prospect.state', ProspectStatePayload),
   coachStage: topic('coach.stage', CoachStagePayload),
+  coachMetrics: topic('coach.metrics', CoachMetricsPayload),
+  coachTip: topic('coach.tip', CoachTipPayload),
 } as const;
 
 /** LiveKit's built-in transcription topic, read on the web with `useTranscriptions`. */
