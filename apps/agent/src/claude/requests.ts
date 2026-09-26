@@ -1,13 +1,33 @@
 import type { BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/messages/messages';
+import { JudgeResult } from '@ccc/contracts';
 import { type ChatTurn, type Effort, SERVER_FALLBACK_BETA, modelCapabilities } from '@ccc/core';
+import { PROSPECT_TOOLS } from '../prospect/tools.ts';
+import { structuredFormat } from './structuredOutput.ts';
 
-/** Room for one or two spoken sentences (plus any adaptive thinking at low effort). */
-export const PROSPECT_MAX_TOKENS = 300;
+/** Room for one or two spoken sentences, a tool call, and any adaptive thinking at low effort. */
+export const PROSPECT_MAX_TOKENS = 512;
+
+/** The judge's JSON is small; the rest is headroom for adaptive thinking. */
+export const JUDGE_MAX_TOKENS = 2048;
+
+/** Built once: an unchanged schema is compiled once by the API and then cached. */
+const JUDGE_FORMAT = structuredFormat(JudgeResult);
+
+/** Effort and server-side refusal fallbacks, for the models that accept them (Haiku 4.5 takes neither). */
+function modelOptions(model: string, effort: Effort) {
+  const caps = modelCapabilities(model);
+  return {
+    effort: caps.effort ? { effort } : {},
+    fallbacks: caps.serverFallbacks
+      ? { betas: [SERVER_FALLBACK_BETA], fallbacks: 'default' as const }
+      : {},
+  };
+}
 
 /**
  * The prospect's request. Never carries temperature, top_p or top_k: Opus 5
- * rejects them. Effort and server-side refusal fallbacks are sent only to
- * models that accept them (Haiku 4.5 takes neither).
+ * rejects them. The tools and the persona are the same every turn, so the
+ * prefix up to the persona caches from turn 2.
  */
 export function prospectRequest(input: {
   model: string;
@@ -15,14 +35,37 @@ export function prospectRequest(input: {
   persona: string;
   messages: ChatTurn[];
 }): BetaMessageStreamParams {
-  const caps = modelCapabilities(input.model);
+  const options = modelOptions(input.model, input.effort);
   return {
     model: input.model,
     max_tokens: PROSPECT_MAX_TOKENS,
-    // The persona is stable for the whole call, so it caches from turn 2.
+    tools: PROSPECT_TOOLS,
     system: [{ type: 'text', text: input.persona, cache_control: { type: 'ephemeral' } }],
     messages: input.messages,
-    ...(caps.effort ? { output_config: { effort: input.effort } } : {}),
-    ...(caps.serverFallbacks ? { betas: [SERVER_FALLBACK_BETA], fallbacks: 'default' } : {}),
+    ...(Object.keys(options.effort).length ? { output_config: options.effort } : {}),
+    ...options.fallbacks,
+  };
+}
+
+/**
+ * The judge's request: structured output constrained to JudgeResult, parsed by
+ * `client.beta.messages.parse`. The system prompt is fixed for the call.
+ */
+export function judgeRequest(input: {
+  model: string;
+  effort: Effort;
+  system: string;
+  user: string;
+}) {
+  const options = modelOptions(input.model, input.effort);
+  return {
+    model: input.model,
+    max_tokens: JUDGE_MAX_TOKENS,
+    system: [
+      { type: 'text' as const, text: input.system, cache_control: { type: 'ephemeral' as const } },
+    ],
+    messages: [{ role: 'user' as const, content: input.user }],
+    output_config: { ...options.effort, format: JUDGE_FORMAT },
+    ...options.fallbacks,
   };
 }

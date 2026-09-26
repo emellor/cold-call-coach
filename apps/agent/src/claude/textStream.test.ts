@@ -113,3 +113,40 @@ describe('claudeTextStream', () => {
     expect(onError).not.toHaveBeenCalled();
   });
 });
+
+describe('claudeTextStream closing text', () => {
+  const toolOnly = { ...message('tool_use'), content: [] } as BetaMessage;
+
+  it('speaks closing text when the reply was only a tool call, after onComplete', async () => {
+    const order: string[] = [];
+    const { messages } = fakeClaude({ events: [], final: toolOnly });
+    const chunks = await readAll(
+      claudeTextStream({
+        messages,
+        params,
+        onComplete: () => order.push('complete'),
+        closingText: (_m, spoke) => {
+          order.push(`closing:${spoke}`);
+          return 'Right. Goodbye.';
+        },
+      }),
+    );
+    expect(chunks).toEqual(['Right. Goodbye.']);
+    expect(order).toEqual(['complete', 'closing:false']);
+  });
+
+  it('adds nothing after a reply that spoke, when the callback says so', async () => {
+    const { messages } = fakeClaude({ events: [text('Bye then.')], final: toolOnly });
+    const chunks = await readAll(
+      claudeTextStream({ messages, params, closingText: (_m, spoke) => (spoke ? undefined : 'x') }),
+    );
+    expect(chunks).toEqual(['Bye then.']);
+  });
+
+  it('is not asked after a refusal', async () => {
+    const closingText = vi.fn(() => 'x');
+    const { messages } = fakeClaude({ events: [], final: message('refusal') });
+    await readAll(claudeTextStream({ messages, params, closingText }));
+    expect(closingText).not.toHaveBeenCalled();
+  });
+});

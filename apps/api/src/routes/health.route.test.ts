@@ -4,6 +4,7 @@ import { buildApp } from '../app.ts';
 import { loadConfig } from '../config.ts';
 import { createDb } from '../db/client.ts';
 import { databaseAvailable, testDatabaseUrl } from '../test/db.ts';
+import { testCatalog } from '../test/catalog.ts';
 
 const hasDb = await databaseAvailable();
 const noWeb = '/nonexistent-web-dist';
@@ -14,7 +15,7 @@ describe.skipIf(!hasDb)('GET /api/health (real Postgres)', () => {
 
   it('reports ok including the database round-trip', async () => {
     const app = await buildApp(
-      { config: loadConfig({ DATABASE_URL: testDatabaseUrl }), pool, db },
+      { config: loadConfig({ DATABASE_URL: testDatabaseUrl }), pool, db, catalog: testCatalog },
       { webDistDir: noWeb },
     );
     const res = await app.inject({ method: 'GET', url: '/api/health' });
@@ -32,7 +33,7 @@ describe('GET /api/health without a database', () => {
     const deadUrl = 'postgres://coach:coach@127.0.0.1:1/coach';
     const { pool, db } = createDb(deadUrl);
     const app = await buildApp(
-      { config: loadConfig({ DATABASE_URL: deadUrl }), pool, db },
+      { config: loadConfig({ DATABASE_URL: deadUrl }), pool, db, catalog: testCatalog },
       { webDistDir: noWeb },
     );
     const res = await app.inject({ method: 'GET', url: '/api/health' });

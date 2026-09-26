@@ -1,15 +1,26 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { DispatchMetadata, REP_IDENTITY, Topics } from '@ccc/contracts';
+import {
+  DispatchMetadata,
+  type InternalScenarioResponse,
+  REP_IDENTITY,
+  Topics,
+} from '@ccc/contracts';
+import { buildProspectSystemPrompt } from '@ccc/core';
 import { type JobContext, type VAD, inference, log, voice } from '@livekit/agents';
 import * as cartesia from '@livekit/agents-plugin-cartesia';
 import * as deepgram from '@livekit/agents-plugin-deepgram';
 import { CallController } from './call.ts';
+import { chatContextToTurns, repSpeakingSeconds } from './chat.ts';
+import { createClaude } from './claude/client.ts';
 import { type CallConfig, readCallConfig } from './config.ts';
+import { claudeJudge } from './judge/judge.ts';
 import { LatencyTracker } from './latency.ts';
 import type { Logger } from './log.ts';
+import { actOnReply } from './prospect/actions.ts';
 import { ProspectAgent } from './prospect/agent.ts';
-import { CLAIRE } from './prospect/claire.ts';
+import { ProspectBrain } from './prospect/brain.ts';
+import { REPLY_ID_KEY, ReplyLedger } from './prospect/replies.ts';
 import { Publisher } from './publisher.ts';
+import { cartesiaSpeed, chooseVoice, fetchScenario, keytermsFor, ttsLanguage } from './scenario.ts';
 
 /** How long to wait for the rep before giving up on telling them anything. */
 const REP_WAIT_MS = 10_000;
@@ -53,12 +64,47 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
   }
   const config = configResult.config;
 
-  const claude = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
+  let loaded: InternalScenarioResponse;
+  try {
+    loaded = await fetchScenario({
+      apiBaseUrl: config.API_BASE_URL,
+      secret: config.INTERNAL_API_SECRET,
+      scenarioId: meta.scenarioId,
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'could not load the scenario');
+    const detail = error instanceof Error ? error.message : String(error);
+    return failCall(ctx, publisher, `The voice agent couldn't load the scenario: ${detail}.`);
+  }
+  const { scenario, product } = loaded;
+
+  const voiceChoice = chooseVoice(scenario, config.CARTESIA_VOICE_ID);
+  if (!voiceChoice.ok) {
+    logger.error({ scenarioId: scenario.id }, voiceChoice.problem);
+    return failCall(ctx, publisher, `${voiceChoice.problem}.`);
+  }
+
+  const claude = createClaude(config.ANTHROPIC_API_KEY);
+  const brain = new ProspectBrain({
+    scenario,
+    product,
+    judge: claudeJudge({
+      messages: claude.beta.messages,
+      model: config.COACH_MODEL,
+      effort: config.COACH_EFFORT,
+      logger,
+    }),
+    logger,
+    onState: (payload) => void publisher.publish(Topics.prospectState, payload),
+  });
+  const ledger = new ReplyLedger();
   const agent = new ProspectAgent({
-    persona: CLAIRE.persona,
+    persona: buildProspectSystemPrompt(scenario),
     claude: claude.beta.messages,
     model: config.PROSPECT_MODEL,
     effort: config.PROSPECT_EFFORT,
+    brain,
+    ledger,
     logger,
   });
 
@@ -66,17 +112,19 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
     stt: new deepgram.STT({
       apiKey: config.DEEPGRAM_API_KEY,
       model: 'nova-3',
-      language: 'en-GB',
+      language: scenario.locale,
       fillerWords: true,
       interimResults: true,
       punctuate: true,
       smartFormat: true,
-      keyterm: [...CLAIRE.keyterms],
+      keyterm: keytermsFor(scenario, product),
     }),
     tts: new cartesia.TTS({
       apiKey: config.CARTESIA_API_KEY,
       model: 'sonic-3',
-      voice: config.CARTESIA_VOICE_ID,
+      voice: voiceChoice.voiceId,
+      language: ttsLanguage(scenario.locale),
+      speed: cartesiaSpeed(scenario.voice.speed),
     }),
     vad,
     turnHandling: { turnDetection: await turnDetection(config.TURN_DETECTOR) },
@@ -87,13 +135,29 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
     publisher,
     shutdown: (reason) => ctx.shutdown(reason),
     logger,
-    openingLine: CLAIRE.openingLine,
+    openingLine: scenario.prospect.openingLine,
   });
 
   const latency = new LatencyTracker();
   session.on(voice.AgentSessionEventTypes.ConversationItemAdded, ({ item }) => {
     const payload = latency.onItem(item);
     if (payload) void publisher.publish(Topics.debugLatency, payload);
+    if (item.type !== 'message') return;
+
+    if (item.role === 'user') {
+      // Judged beside her reply, never before it: the result shapes her next one.
+      brain.repTurn(chatContextToTurns(agent.chatCtx), {
+        longestMonologueSec: repSpeakingSeconds(item.metrics),
+      });
+    } else if (item.role === 'assistant') {
+      // A reply acts only once heard in full; one she was cut off in does nothing.
+      const reply = ledger.committed(item.extra[REPLY_ID_KEY]);
+      if (reply && !item.interrupted) {
+        actOnReply(reply, brain.repTurns, { brain, controller, logger }).catch((error: unknown) =>
+          logger.error({ err: error }, 'acting on her reply failed'),
+        );
+      }
+    }
   });
   session.on(voice.AgentSessionEventTypes.Error, ({ error }) => {
     logger.warn({ err: error }, 'session error');
@@ -114,6 +178,9 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
     await ctx.connect();
     await ctx.waitForParticipant(REP_IDENTITY);
     await controller.ringAndPickUp();
+    if (controller.phase === 'connected') {
+      await publisher.publish(Topics.prospectState, brain.statePayload());
+    }
   } catch (error) {
     logger.error({ err: error }, 'call setup failed');
     await controller.end('error', describeError(error as object));

@@ -43,7 +43,13 @@ export default defineConfig([
     languageOptions: { globals: globals.node },
   },
   {
-    files: ['apps/api/**/*.ts', 'apps/agent/**/*.ts', 'scripts/**/*.ts', '*.ts'],
+    files: [
+      'apps/api/**/*.ts',
+      'apps/agent/**/*.ts',
+      'scenarios/**/*.ts',
+      'scripts/**/*.ts',
+      '*.ts',
+    ],
     languageOptions: { globals: globals.node },
   },
 

@@ -4,21 +4,16 @@ import type { AppDeps } from '../app.ts';
 import { liveKitConfig } from '../config.ts';
 import { LOCAL_USER_ID, calls } from '../db/schema.ts';
 import { mintRepToken } from '../livekit.ts';
-
-/**
- * M1 knows one scenario, hard-coded in the agent. M3 replaces this with the
- * scenarios table.
- */
-const KNOWN_SCENARIOS: Record<string, number> = { 'medium-finance-director': 1 };
+import { latestScenario } from '../scenarios.ts';
 
 export function registerCallRoutes(app: FastifyInstance, { config, db }: AppDeps): void {
   app.post('/api/calls', async (request, reply) => {
     const { scenarioId, mode } = CreateCallRequest.parse(request.body);
 
-    const scenarioVersion = KNOWN_SCENARIOS[scenarioId];
-    if (scenarioVersion === undefined) {
-      return reply.code(404).send({ error: `Unknown scenario: ${scenarioId}` });
-    }
+    // The call records the version it was made with; the agent loads the latest.
+    const scenario = await latestScenario(db, scenarioId);
+    if (!scenario) return reply.code(404).send({ error: `Unknown scenario: ${scenarioId}` });
+    const scenarioVersion = scenario.version;
 
     const livekit = liveKitConfig(config);
     if ('missing' in livekit) {

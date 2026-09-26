@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NO_ANSWER_MS, useCall } from './useCall.ts';
+import { NO_ANSWER_MS, describeOutcome, useCall } from './useCall.ts';
 
 const fakes = vi.hoisted(() => {
   type Handler = (reader: { readAll(): Promise<string> }, info: { identity: string }) => unknown;
@@ -124,6 +124,77 @@ describe('useCall', () => {
     expect(lastRoom().disconnect).toHaveBeenCalled();
   });
 
+  it('follows her mood and announces a booked meeting without restarting the clock', async () => {
+    mockCreateCall();
+    const { result } = renderHook(() => useCall());
+    await act(() => result.current.dial(request));
+    await act(() => lastRoom().deliver('call.state', { phase: 'connected' }));
+    const connectedAt = result.current.view.connectedAt;
+
+    const state = { turn: 3, mood: 'happy', interest: 66, patience: 48 };
+    await act(() => lastRoom().deliver('prospect.state', state));
+    await act(() => lastRoom().deliver('prospect.state', { turn: 4, mood: 'furious' }));
+    expect(result.current.view.prospect).toEqual(state);
+
+    await act(() =>
+      lastRoom().deliver('call.state', {
+        phase: 'connected',
+        outcome: 'meeting_booked',
+        reason: 'Tuesday at 10am',
+      }),
+    );
+    expect(result.current.view).toMatchObject({
+      phase: 'connected',
+      meeting: 'Tuesday at 10am',
+      connectedAt,
+    });
+
+    await act(() =>
+      lastRoom().deliver('call.state', {
+        phase: 'ended',
+        outcome: 'meeting_booked',
+        reason: 'Tuesday at 10am',
+      }),
+    );
+    expect(result.current.view).toMatchObject({
+      phase: 'ended',
+      outcome: 'meeting_booked',
+      message: 'Meeting booked: Tuesday at 10am.',
+    });
+  });
+
+  it('still ends as booked when the rep hangs up after the meeting', async () => {
+    mockCreateCall();
+    const { result } = renderHook(() => useCall());
+    await act(() => result.current.dial(request));
+    await act(() =>
+      lastRoom().deliver('call.state', {
+        phase: 'connected',
+        outcome: 'meeting_booked',
+        reason: 'Friday at 9am',
+      }),
+    );
+    act(() => result.current.hangUp());
+    expect(result.current.view).toMatchObject({
+      phase: 'ended',
+      outcome: 'meeting_booked',
+      message: 'Meeting booked: Friday at 9am.',
+    });
+  });
+
+  it('starts each call without the last one’s mood or meeting', async () => {
+    mockCreateCall();
+    const { result } = renderHook(() => useCall());
+    await act(() => result.current.dial(request));
+    await act(() =>
+      lastRoom().deliver('prospect.state', { turn: 1, mood: 'angry', interest: 5, patience: 10 }),
+    );
+    act(() => result.current.hangUp());
+    await act(() => result.current.dial(request));
+    expect(result.current.view.prospect).toBeUndefined();
+    expect(result.current.view.meeting).toBeUndefined();
+  });
+
   it('hangs up on request', async () => {
     mockCreateCall();
     const { result } = renderHook(() => useCall());
@@ -165,5 +236,22 @@ describe('useCall', () => {
     await act(() => vi.advanceTimersByTimeAsync(1));
     expect(result.current.view).toMatchObject({ phase: 'ended', outcome: 'error' });
     expect(result.current.view.message).toMatch(/No answer/);
+  });
+});
+
+describe('describeOutcome', () => {
+  it('puts the agent’s reason into words for the rep', () => {
+    expect(describeOutcome('meeting_booked', 'Thursday at 2pm')).toBe(
+      'Meeting booked: Thursday at 2pm.',
+    );
+    expect(describeOutcome('hung_up_by_prospect', 'Out of patience')).toBe(
+      'She hung up. Her reason: “Out of patience”',
+    );
+    expect(describeOutcome('hung_up_by_prospect')).toBe('She hung up.');
+    expect(describeOutcome('ended_by_rep', 'session closed')).toBe('You hung up.');
+    expect(describeOutcome('timeout', 'The 15-minute call limit was reached.')).toBe(
+      'The 15-minute call limit was reached.',
+    );
+    expect(describeOutcome('error')).toBe('The call failed.');
   });
 });

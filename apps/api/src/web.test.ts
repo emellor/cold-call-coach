@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from './app.ts';
 import { loadConfig } from './config.ts';
 import { createDb } from './db/client.ts';
+import { testCatalog } from './test/catalog.ts';
 
 describe('serving the built SPA', () => {
   let dist: string;
@@ -17,7 +18,10 @@ describe('serving the built SPA', () => {
     await mkdir(join(dist, 'assets'));
     await writeFile(join(dist, 'index.html'), '<!doctype html><title>Cold Call Coach</title>');
     await writeFile(join(dist, 'assets', 'app-abc123.js'), 'console.log(1)');
-    app = await buildApp({ config: loadConfig({}), pool, db }, { webDistDir: dist });
+    app = await buildApp(
+      { config: loadConfig({}), pool, db, catalog: testCatalog },
+      { webDistDir: dist },
+    );
   });
 
   afterAll(async () => {

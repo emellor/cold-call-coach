@@ -28,9 +28,22 @@ const CallConfig = z.object({
   ANTHROPIC_API_KEY: nonEmpty(),
   DEEPGRAM_API_KEY: nonEmpty(),
   CARTESIA_API_KEY: nonEmpty(),
-  CARTESIA_VOICE_ID: nonEmpty(),
+  /** The voice for a scenario whose `voice.voiceId` is still the placeholder. */
+  CARTESIA_VOICE_ID: blankAsUnset(z.string().min(1).optional()),
+  /** Where the agent loads the scenario from (GET /internal/scenarios/:id). */
+  API_BASE_URL: blankAsUnset(
+    z
+      .string()
+      .regex(/^https?:\/\//, 'must be an http:// or https:// URL')
+      .default('http://localhost:3000')
+      .transform((url) => url.replace(/\/+$/, '')),
+  ),
+  INTERNAL_API_SECRET: nonEmpty(),
   PROSPECT_MODEL: blankAsUnset(z.string().min(1).default('claude-opus-5')),
   PROSPECT_EFFORT: blankAsUnset(Effort.default('low')),
+  /** The judge (and, from M5, the coach's hints). */
+  COACH_MODEL: blankAsUnset(z.string().min(1).default('claude-opus-5')),
+  COACH_EFFORT: blankAsUnset(Effort.default('low')),
   /**
    * `multilingual` is PLAN.md's text-based detector (@livekit/agents-plugin-livekit,
    * model fetched by `download-files`). `audio` is LiveKit's newer on-device audio

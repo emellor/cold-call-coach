@@ -6,5 +6,11 @@
     "allowJs": true,
     "checkJs": true
   },
-  "include": ["vitest.config.ts", "vitest.setup.jsdom.ts", "scripts/**/*.ts", "scripts/**/*.mjs"]
+  "include": [
+    "vitest.config.ts",
+    "vitest.setup.jsdom.ts",
+    "scenarios/**/*.ts",
+    "scripts/**/*.ts",
+    "scripts/**/*.mjs"
+  ]
 }

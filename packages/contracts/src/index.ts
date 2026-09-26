@@ -2,4 +2,6 @@
 // schema here, and both ends validate against it.
 export * from './call.ts';
 export * from './http.ts';
+export * from './judge.ts';
+export * from './scenario.ts';
 export * from './topics.ts';

@@ -1,0 +1,12 @@
+{
+  "name": "WattGuard",
+  "oneLiner": "Shows multi-site UK businesses where they waste energy, site by site, and keeps them compliant",
+  "valuePoints": [
+    "per-site energy visibility",
+    "anomaly alerts",
+    "ESOS / SECR / ISO 50001 reporting"
+  ],
+  "idealCustomer": "UK businesses with 3+ sites",
+  "callGoal": "Book a 20-minute discovery call",
+  "keyterms": ["WattGuard", "ESOS", "SECR", "ISO 50001", "half-hourly data"]
+}

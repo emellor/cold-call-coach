@@ -8,6 +8,7 @@ import { loadConfig } from '../config.ts';
 import { createDb } from '../db/client.ts';
 import { LOCAL_USER_ID, calls } from '../db/schema.ts';
 import { databaseAvailable, testDatabaseUrl } from '../test/db.ts';
+import { testCatalog } from '../test/catalog.ts';
 
 const hasDb = await databaseAvailable();
 
@@ -23,7 +24,12 @@ describe.skipIf(!hasDb)('POST /api/calls (real Postgres)', () => {
 
   beforeAll(async () => {
     app = await buildApp(
-      { config: loadConfig({ DATABASE_URL: testDatabaseUrl, ...livekitEnv }), pool, db },
+      {
+        config: loadConfig({ DATABASE_URL: testDatabaseUrl, ...livekitEnv }),
+        pool,
+        db,
+        catalog: testCatalog,
+      },
       { webDistDir: '/nonexistent' },
     );
   });
@@ -96,7 +102,12 @@ describe.skipIf(!hasDb)('POST /api/calls (real Postgres)', () => {
 
   it('answers 503 naming the missing LiveKit settings, without creating a call', async () => {
     const bare = await buildApp(
-      { config: loadConfig({ DATABASE_URL: testDatabaseUrl, LIVEKIT_API_KEY: '' }), pool, db },
+      {
+        config: loadConfig({ DATABASE_URL: testDatabaseUrl, LIVEKIT_API_KEY: '' }),
+        pool,
+        db,
+        catalog: testCatalog,
+      },
       { webDistDir: '/nonexistent' },
     );
     const before = await db.$count(calls);
