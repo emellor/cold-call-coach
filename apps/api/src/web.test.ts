@@ -44,6 +44,11 @@ describe('serving the built SPA', () => {
     expect(res.json()).toEqual({ error: 'Not found' });
   });
 
+  it('404s a missing file instead of answering with index.html', async () => {
+    const res = await app.inject({ method: 'GET', url: '/avatars/mpfb.glb' });
+    expect(res.statusCode).toBe(404);
+  });
+
   it('marks fingerprinted assets immutable', async () => {
     const res = await app.inject({ method: 'GET', url: '/assets/app-abc123.js' });
     expect(res.statusCode).toBe(200);

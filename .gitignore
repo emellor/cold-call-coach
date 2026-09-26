@@ -9,3 +9,7 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# The TalkingHead sample avatar (~37 MB, CC0): fetched by `pnpm avatar:fetch`.
+apps/web/public/avatars/*.glb
+apps/web/public/avatars/*.partial

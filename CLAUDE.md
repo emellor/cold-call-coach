@@ -96,6 +96,21 @@ pnpm --filter @ccc/agent download-files   # fetch the agent's model files (turn 
 - **A local LiveKit server** (`livekit-server --dev`, key `devkey`, secret `secret`,
   `ws://localhost:7880`) runs the full dispatch path without LiveKit Cloud.
 
+## The avatar (apps/web/src/avatar)
+
+- `AvatarController` wraps TalkingHead (3D) and HeadAudio (lip-sync from audio). The
+  prospect's LiveKit track is routed through TalkingHead's audio graph only: a muted
+  `<audio>` element touches the stream (Chrome won't process a remote stream otherwise),
+  and `RoomAudioRenderer` is not used, or she would play twice. It is the fallback only
+  when there is no controller (no WebGL).
+- `lipsyncModules: []`: HeadAudio drives the mouth, and TalkingHead's text lip-sync modules
+  are loaded by a runtime-computed import Vite's build can't follow.
+- Never call `head.stop()` to pause: it also suspends the audio context and silences her.
+  Phone mode and hidden tabs set `head.isRunning = false` and stop HeadAudio instead.
+- The 3D code is a lazy chunk loaded by `AvatarStore`; the call UI works without it.
+  In development the controller is on `window.__cccAvatar` for console experiments.
+- The model is fetched by `pnpm avatar:fetch` (pinned commit + SHA-256) and git-ignored.
+
 ## Tests
 
 Two Vitest projects in `vitest.config.ts`: `node` for every `*.test.ts`, `jsdom` for

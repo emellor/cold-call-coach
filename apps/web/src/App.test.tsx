@@ -19,8 +19,16 @@ describe('App', () => {
     render(<App />);
     expect(screen.getByRole('heading', { name: 'Cold Call Coach' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Dial' })).toBeInTheDocument();
-    expect(screen.getByText('Put your headset on and press Dial.')).toBeInTheDocument();
+    expect(screen.getByText('Claire Hughes')).toBeInTheDocument();
     expect(await screen.findByText('API ok · Database ok (3 ms)')).toBeInTheDocument();
+  });
+
+  it('falls back to a voice-only call when the 3D avatar cannot run', async () => {
+    // jsdom has no Web Audio worklets or WebGL, like a browser that can't run the avatar.
+    mockFetch(200, { ok: true, db: { ok: true, latencyMs: 3 } });
+    render(<App />);
+    expect(await screen.findByText(/calls are voice only/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Dial' })).toBeEnabled();
   });
 
   it('reports a database failure from a 503 health body', async () => {

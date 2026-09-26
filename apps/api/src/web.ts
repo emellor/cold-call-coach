@@ -25,10 +25,13 @@ export async function registerWeb(app: FastifyInstance, distDir: string): Promis
     },
   });
 
-  // Client-side routes (/calls/…) resolve to index.html; API misses stay JSON.
+  // Client-side routes (/calls/…) resolve to index.html. API misses stay JSON,
+  // and so do missing files: a request for /avatars/x.glb must 404, not get HTML.
   app.setNotFoundHandler((request, reply) => {
-    const isApi = request.url.startsWith('/api/') || request.url.startsWith('/internal/');
-    if (request.method === 'GET' && !isApi) {
+    const path = request.url.split('?')[0] ?? '';
+    const isApi = path.startsWith('/api/') || path.startsWith('/internal/');
+    const isFile = /\.[a-z0-9]+$/i.test(path);
+    if (request.method === 'GET' && !isApi && !isFile) {
       return reply.type('text/html').sendFile('index.html');
     }
     return reply.code(404).send({ error: 'Not found' });

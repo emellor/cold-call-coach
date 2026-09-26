@@ -29,6 +29,7 @@ browser (apps/web) ⇄ LiveKit Cloud ⇄ voice agent (apps/agent) → Deepgram �
 ```bash
 pnpm install
 cp .env.example .env        # then fill in the keys and CARTESIA_VOICE_ID
+pnpm avatar:fetch           # once: the 3D avatar (~37 MB, CC0; see CREDITS.md)
 pnpm --filter @ccc/agent download-files   # once: the turn detector's model
 docker compose up -d        # Postgres on :5432
 pnpm db:migrate
@@ -36,7 +37,10 @@ pnpm dev                    # API on :3000, web on http://localhost:5173, agent 
 ```
 
 Open http://localhost:5173, put your headset on and press **Dial**. It rings for a few
-seconds, Claire Hughes picks up, and you talk. The transcript shows both sides, and the
+seconds, Claire Hughes picks up on camera, and you talk. Her lips follow her voice, she
+looks at you and nods while you speak, and **Phone mode** hides her (real cold calls have
+no face) without changing how her voice reaches you. If her lips trail her voice, tick
+**Delay voice 0.1 s**. The transcript shows both sides, and the
 latency panel shows each reply's end-of-turn, LLM, TTS and end-to-end times with a
 running p50. The header shows whether the API and database are healthy
 (`GET /api/health` returns the same).
