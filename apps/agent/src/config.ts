@@ -4,14 +4,43 @@ import { z } from 'zod';
 
 const repoEnvFile = fileURLToPath(new URL('../../../.env', import.meta.url));
 
-const AgentConfig = z.object({
-  LIVEKIT_URL: z.string().regex(/^wss?:\/\//, 'must be a ws:// or wss:// URL'),
-  LIVEKIT_API_KEY: z.string().min(1),
-  LIVEKIT_API_SECRET: z.string().min(1),
-});
-export type AgentConfig = z.infer<typeof AgentConfig>;
+/** An empty `KEY=` line in .env means unset. */
+const blankIsUnset = (v: unknown) => (v === '' ? undefined : v);
+/** Blank counts as unset, so a `.default()` inside still applies. */
+const blankAsUnset = <S extends z.ZodType>(schema: S) => z.preprocess(blankIsUnset, schema);
+const nonEmpty = () => blankAsUnset(z.string().min(1));
 
-export type ConfigResult = { ok: true; config: AgentConfig } | { ok: false; problems: string[] };
+const Effort = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
+
+/** Needed for the worker to register with LiveKit at all. */
+const WorkerConfig = z.object({
+  LIVEKIT_URL: blankAsUnset(z.string().regex(/^wss?:\/\//, 'must be a ws:// or wss:// URL')),
+  LIVEKIT_API_KEY: nonEmpty(),
+  LIVEKIT_API_SECRET: nonEmpty(),
+});
+export type WorkerConfig = z.infer<typeof WorkerConfig>;
+
+/**
+ * Needed for a call. Checked per job rather than at boot, so a missing key ends
+ * that call with a reason the rep can read instead of taking the worker down.
+ */
+const CallConfig = z.object({
+  ANTHROPIC_API_KEY: nonEmpty(),
+  DEEPGRAM_API_KEY: nonEmpty(),
+  CARTESIA_API_KEY: nonEmpty(),
+  CARTESIA_VOICE_ID: nonEmpty(),
+  PROSPECT_MODEL: blankAsUnset(z.string().min(1).default('claude-opus-5')),
+  PROSPECT_EFFORT: blankAsUnset(Effort.default('low')),
+  /**
+   * `multilingual` is PLAN.md's text-based detector (@livekit/agents-plugin-livekit,
+   * model fetched by `download-files`). `audio` is LiveKit's newer on-device audio
+   * model, which the plugin now recommends; no download needed.
+   */
+  TURN_DETECTOR: blankAsUnset(z.enum(['multilingual', 'audio']).default('multilingual')),
+});
+export type CallConfig = z.infer<typeof CallConfig>;
+
+export type ConfigResult<T> = { ok: true; config: T } | { ok: false; problems: string[] };
 
 /**
  * Loads the repo-root `.env` into `process.env`. Variables already set in the
@@ -21,8 +50,8 @@ export function loadDotEnv(path = repoEnvFile): void {
   if (existsSync(path)) process.loadEnvFile(path);
 }
 
-export function readConfig(env: NodeJS.ProcessEnv): ConfigResult {
-  const parsed = AgentConfig.safeParse(env);
+function read<T>(schema: z.ZodType<T>, env: NodeJS.ProcessEnv): ConfigResult<T> {
+  const parsed = schema.safeParse(env);
   if (parsed.success) return { ok: true, config: parsed.data };
   return {
     ok: false,
@@ -33,3 +62,10 @@ export function readConfig(env: NodeJS.ProcessEnv): ConfigResult {
     ),
   };
 }
+
+export const readWorkerConfig = (env: NodeJS.ProcessEnv) => read(WorkerConfig, env);
+
+/** The selected turn detector; an invalid value falls back to the default here and fails the call later. */
+export const turnDetectorKind = (env: NodeJS.ProcessEnv): CallConfig['TURN_DETECTOR'] =>
+  CallConfig.shape.TURN_DETECTOR.safeParse(env.TURN_DETECTOR).data ?? 'multilingual';
+export const readCallConfig = (env: NodeJS.ProcessEnv) => read(CallConfig, env);

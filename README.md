@@ -28,17 +28,26 @@ browser (apps/web) ⇄ LiveKit Cloud ⇄ voice agent (apps/agent) → Deepgram �
 
 ```bash
 pnpm install
-cp .env.example .env        # then fill in the keys
+cp .env.example .env        # then fill in the keys and CARTESIA_VOICE_ID
+pnpm --filter @ccc/agent download-files   # once: the turn detector's model
 docker compose up -d        # Postgres on :5432
 pnpm db:migrate
 pnpm dev                    # API on :3000, web on http://localhost:5173, agent worker
 ```
 
-Open http://localhost:5173. The page shows whether the API and database are healthy
+Open http://localhost:5173, put your headset on and press **Dial**. It rings for a few
+seconds, Claire Hughes picks up, and you talk. The transcript shows both sides, and the
+latency panel shows each reply's end-of-turn, LLM, TTS and end-to-end times with a
+running p50. The header shows whether the API and database are healthy
 (`GET /api/health` returns the same).
 
 Without the LiveKit variables the agent prints what is missing and exits, and the API
-and web keep running.
+and web keep running. With LiveKit but without a provider key, a call ends straight
+away and names the missing key.
+
+`TURN_DETECTOR=audio` in `.env` swaps the plan's text-based turn detector for LiveKit's
+newer on-device audio model, which needs no download; the plugin now marks the text
+model deprecated. Try both with your headset and keep whichever feels more natural.
 
 To run it the way it is deployed, as one process serving the API and the built SPA:
 

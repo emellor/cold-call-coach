@@ -8,8 +8,14 @@ overrides:
   vite: ^6.4.3
 
 # pnpm 10 skips dependency install scripts unless allowed here. true runs one;
-# false skips it without a warning. @livekit/local-inference's script is a no-op:
-# its native binaries arrive as optional platform packages.
+# false skips it without a warning. The skipped ones are unneeded:
+# - @livekit/local-inference: the script is a no-op; binaries come as optional packages.
+# - onnxruntime-node: on linux/x64 it only downloads CUDA 12 GPU binaries; the CPU
+#   runtime the VAD and turn detector use is bundled.
+# - protobufjs: a version check. sharp: binaries come as optional @img/* packages.
 allowBuilds:
   esbuild: true
   '@livekit/local-inference': false
+  onnxruntime-node: false
+  protobufjs: false
+  sharp: false

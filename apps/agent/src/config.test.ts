@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { readConfig } from './config.ts';
+import { readCallConfig, readWorkerConfig } from './config.ts';
 
-describe('agent readConfig', () => {
+describe('readWorkerConfig', () => {
   it('accepts a complete LiveKit configuration', () => {
-    const result = readConfig({
+    const result = readWorkerConfig({
       LIVEKIT_URL: 'wss://example.livekit.cloud',
       LIVEKIT_API_KEY: 'key',
       LIVEKIT_API_SECRET: 'secret',
@@ -11,8 +11,8 @@ describe('agent readConfig', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('names every missing variable instead of throwing', () => {
-    const result = readConfig({});
+  it('names every missing variable, treating blank .env lines as unset', () => {
+    const result = readWorkerConfig({ LIVEKIT_API_KEY: '' });
     expect(result).toEqual({
       ok: false,
       problems: [
@@ -24,11 +24,49 @@ describe('agent readConfig', () => {
   });
 
   it('rejects an http URL', () => {
-    const result = readConfig({
+    const result = readWorkerConfig({
       LIVEKIT_URL: 'https://example.livekit.cloud',
       LIVEKIT_API_KEY: 'key',
       LIVEKIT_API_SECRET: 'secret',
     });
     expect(result.ok).toBe(false);
+  });
+});
+
+describe('readCallConfig', () => {
+  const keys = {
+    ANTHROPIC_API_KEY: 'a',
+    DEEPGRAM_API_KEY: 'd',
+    CARTESIA_API_KEY: 'c',
+    CARTESIA_VOICE_ID: 'voice',
+  };
+
+  it('defaults the prospect lane to Opus 5 at low effort, with the plan’s turn detector', () => {
+    const result = readCallConfig({ ...keys, PROSPECT_MODEL: '', PROSPECT_EFFORT: '' });
+    expect(result).toEqual({
+      ok: true,
+      config: {
+        ...keys,
+        PROSPECT_MODEL: 'claude-opus-5',
+        PROSPECT_EFFORT: 'low',
+        TURN_DETECTOR: 'multilingual',
+      },
+    });
+  });
+
+  it('reports each missing provider key by name', () => {
+    const result = readCallConfig({ ANTHROPIC_API_KEY: 'a' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.problems).toEqual([
+        'DEEPGRAM_API_KEY is not set',
+        'CARTESIA_API_KEY is not set',
+        'CARTESIA_VOICE_ID is not set',
+      ]);
+    }
+  });
+
+  it('rejects an unknown effort level', () => {
+    expect(readCallConfig({ ...keys, PROSPECT_EFFORT: 'extreme' }).ok).toBe(false);
   });
 });

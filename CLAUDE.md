@@ -77,6 +77,25 @@ pnpm --filter @ccc/agent download-files   # fetch the agent's model files (turn 
   Editing an applied migration is a hard error: add a new numbered file. The Drizzle
   schema in `apps/api/src/db/schema.ts` is hand-written to match.
 
+## The voice agent (apps/agent)
+
+- **One job is one call.** `runCall.ts` builds the session; `CallController` (`call.ts`) owns
+  the lifecycle: ring 2–5 s with the rep's audio detached, pick up with `session.say` (no LLM),
+  enforce the 15-minute cap, end exactly once.
+- **The prospect calls Claude from `ProspectAgent.llmNode`.** LiveKit only runs `llmNode` when
+  an `LLM` instance is configured, so `DirectClaudeLLM` is a placeholder that must stay; its
+  `chat()` is never called. Don't swap in `@livekit/agents-plugin-anthropic`: it can't set
+  effort or place the state note.
+- **Barge-in**: LiveKit cancels the `llmNode` stream; `claudeTextStream` aborts the HTTP request
+  on cancel. Preemptive generation is on (LiveKit's default), so a reply can be generated and
+  then discarded: act on anything a reply "does" only once its message is committed.
+- **Turn detector**: `TURN_DETECTOR=multilingual` (the plan's text model) imports
+  `@livekit/agents-plugin-livekit` only when selected, because importing it registers an
+  inference runner that crashes the worker if the model hasn't been downloaded
+  (`pnpm --filter @ccc/agent download-files`). `audio` is LiveKit's on-device replacement.
+- **A local LiveKit server** (`livekit-server --dev`, key `devkey`, secret `secret`,
+  `ws://localhost:7880`) runs the full dispatch path without LiveKit Cloud.
+
 ## Tests
 
 Two Vitest projects in `vitest.config.ts`: `node` for every `*.test.ts`, `jsdom` for

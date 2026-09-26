@@ -1,17 +1,20 @@
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { type JobContext, ServerOptions, cli, defineAgent, log } from '@livekit/agents';
-import { loadDotEnv, readConfig } from './config.ts';
+import { PROSPECT_AGENT_NAME } from '@ccc/contracts';
+import { type JobProcess, ServerOptions, type VAD, cli, defineAgent } from '@livekit/agents';
+import * as silero from '@livekit/agents-plugin-silero';
+import { loadDotEnv, readWorkerConfig, turnDetectorKind } from './config.ts';
+import { runCall } from './runCall.ts';
 
-/** The name the API dispatches to (PLAN.md §5). Explicit dispatch only. */
-export const AGENT_NAME = 'prospect';
+interface ProcessData {
+  vad: VAD;
+}
 
-export default defineAgent({
-  entry: async (ctx: JobContext) => {
-    const logger = log().child({ room: ctx.job.room?.name });
-    logger.info({ jobId: ctx.job.id, metadata: ctx.job.metadata }, 'job received');
-    await ctx.connect();
-    logger.info('connected; M0 has no voice session yet, leaving the room');
-    ctx.shutdown('m0-skeleton');
+export default defineAgent<ProcessData>({
+  prewarm: async (proc: JobProcess<ProcessData>) => {
+    proc.userData.vad = await silero.VAD.load();
+  },
+  entry: async (ctx) => {
+    await runCall(ctx, ctx.proc.userData.vad);
   },
 });
 
@@ -22,7 +25,7 @@ const isMain =
 
 if (isMain) {
   loadDotEnv();
-  const result = readConfig(process.env);
+  const result = readWorkerConfig(process.env);
   if (!result.ok) {
     // Exit 0 so `pnpm dev` keeps the API and web running without LiveKit.
     console.warn(
@@ -35,10 +38,18 @@ if (isMain) {
     process.exit(0);
   }
 
+  if (turnDetectorKind(process.env) === 'multilingual') {
+    // The plan's text-based turn detector registers an inference runner when its
+    // plugin is imported, and that must happen here, in the main process. The
+    // runner needs its model on disk (`pnpm --filter @ccc/agent download-files`),
+    // so the plugin is only imported when this detector is selected.
+    await import('@livekit/agents-plugin-livekit');
+  }
+
   cli.runApp(
     new ServerOptions({
       agent: fileURLToPath(import.meta.url),
-      agentName: AGENT_NAME,
+      agentName: PROSPECT_AGENT_NAME,
     }),
   );
 }
