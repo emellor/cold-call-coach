@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { liveKitPairProblem } from '@ccc/core';
+import { WORKSPACE_ID, WORKSPACE_ID_PROBLEM, liveKitPairProblem } from '@ccc/core';
 import { z } from 'zod';
 import { repoRoot } from './paths.ts';
 
@@ -40,6 +40,8 @@ const Config = z.object({
   INTERNAL_API_SECRET: optional(z.string().min(16, 'must be at least 16 characters')),
   // The post-call review. Without a key, reviews fail with a reason the web shows.
   ANTHROPIC_API_KEY: optional(z.string().min(1)),
+  // Only for a key that belongs to the organization, not a workspace: the workspace to use.
+  ANTHROPIC_WORKSPACE_ID: optional(z.string().regex(WORKSPACE_ID, WORKSPACE_ID_PROBLEM)),
   REVIEW_MODEL: z.preprocess(cleaned, z.string().min(1).default('claude-opus-5')),
   REVIEW_EFFORT: z.preprocess(
     cleaned,

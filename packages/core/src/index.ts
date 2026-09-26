@@ -4,6 +4,7 @@
 export * from './claude/models.ts';
 export * from './claude/pricing.ts';
 export * from './claude/structuredOutput.ts';
+export * from './claude/workspace.ts';
 export * from './coach/hint.ts';
 export * from './coach/liveMetrics.ts';
 export * from './coach/stages.ts';

@@ -136,6 +136,17 @@ describe('readCallConfig', () => {
     }
   });
 
+  it('takes a workspace for a key that has none, by its ID and not its name', () => {
+    const set = readCallConfig({ ...keys, ANTHROPIC_WORKSPACE_ID: 'wrkspc_01AbC\n' });
+    expect(set.ok && set.config.ANTHROPIC_WORKSPACE_ID).toBe('wrkspc_01AbC');
+    const blank = readCallConfig({ ...keys, ANTHROPIC_WORKSPACE_ID: '' });
+    expect(blank.ok && blank.config.ANTHROPIC_WORKSPACE_ID).toBeUndefined();
+    expect(readCallConfig({ ...keys, ANTHROPIC_WORKSPACE_ID: 'Default' })).toEqual({
+      ok: false,
+      problems: ['ANTHROPIC_WORKSPACE_ID must be a workspace ID, which starts with wrkspc_'],
+    });
+  });
+
   it('rejects an unknown effort level and a non-http API URL', () => {
     expect(readCallConfig({ ...keys, PROSPECT_EFFORT: 'extreme' }).ok).toBe(false);
     expect(readCallConfig({ ...keys, COACH_EFFORT: 'extreme' }).ok).toBe(false);

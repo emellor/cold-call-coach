@@ -17,7 +17,10 @@ import {
   type TokenUsage,
   buildReviewSystemPrompt,
   buildReviewUserPrompt,
+  claudeErrorMessage,
   costUsd,
+  describeNoWorkspace,
+  isNoWorkspaceRefusal,
   modelCapabilities,
   structuredFormat,
 } from '@ccc/core';
@@ -80,6 +83,8 @@ export function describeClaudeError(error: unknown): string {
   if (!(error instanceof APIError)) {
     return error instanceof Error ? error.message : String(error);
   }
+  const said = claudeErrorMessage(error.error);
+  if (isNoWorkspaceRefusal(error.status, said)) return describeNoWorkspace('API');
   if (error.status === 401 || error.status === 403) {
     return "Claude rejected the API's key: check ANTHROPIC_API_KEY in the API's .env.";
   }
@@ -88,7 +93,8 @@ export function describeClaudeError(error: unknown): string {
     return 'Claude is overloaded. Try again shortly.';
   if (error.status === undefined)
     return "Couldn't reach Claude. Check the API's network and try again.";
-  return `Claude answered ${error.status}: ${error.message}`;
+  // Claude's own words, not the SDK's message, which repeats the status and the raw JSON.
+  return `Claude answered ${error.status}: ${said ?? error.message}`;
 }
 
 /** What the stream said, gathered from its events. */
