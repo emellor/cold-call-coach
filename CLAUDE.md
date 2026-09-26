@@ -281,6 +281,10 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
   - The web's `AuthGate` asks `GET /api/auth/session` first. Any other 401 fires
     `SIGNED_OUT_EVENT`. It fails open when the API can't be reached, and the API still
     refuses.
+  - The web's `send` labels a request `application/json` only when it has a body.
+    Fastify answers 400 to an empty body labelled JSON, and `app.inject` sends no
+    content-type, so the route tests can't catch it. Deployed, sign-out never cleared
+    the cookie and "Rerun review" always failed.
 - **LiveKit keys.** A wrong key pair used to show only as a call dropping at the first ring.
   - `liveKitPairProblem` (core) refuses a room token from LiveKit's "Generate Token" as the
     secret, and a swapped pair. Both apps' configs use it, and they trim pasted values.
