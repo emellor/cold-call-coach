@@ -40,6 +40,33 @@ describe('prospectRequest', () => {
     expect(request.tools).toBe(PROSPECT_TOOLS);
   });
 
+  it('caches the conversation up to her last reply, not the words or note after it', () => {
+    const messages = [
+      { role: 'user' as const, content: '(Your phone rings and you answer.)' },
+      { role: 'assistant' as const, content: 'Claire Hughes.' },
+      { role: 'user' as const, content: "Hi Claire, it's Ed from WattGuard." },
+      { role: 'assistant' as const, content: 'Who?' },
+      { role: 'user' as const, content: 'Ed, from WattGuard. Have you got a minute?' },
+      { role: 'system' as const, content: 'Interest 35, patience 71.' },
+    ];
+    const request = prospectRequest({ ...base, model: 'claude-opus-5', messages });
+    expect(request.messages).toEqual([
+      messages[0],
+      messages[1],
+      messages[2],
+      {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Who?', cache_control: { type: 'ephemeral' } }],
+      },
+      messages[4],
+      messages[5],
+    ]);
+  });
+
+  it('marks nothing in the conversation before she has said a word', () => {
+    expect(prospectRequest({ ...base, model: 'claude-opus-5' }).messages).toEqual(base.messages);
+  });
+
   it('never sends sampling parameters', () => {
     for (const model of ['claude-opus-5', 'claude-haiku-4-5']) {
       const request = prospectRequest({ ...base, model });

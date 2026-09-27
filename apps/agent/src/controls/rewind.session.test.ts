@@ -46,11 +46,15 @@ function scriptedClaude(lines: string[]) {
 
 const NOTE = '\n\n<private_note>\n(note)\n</private_note>';
 
-/** The conversation as Claude was sent it, one line per message. */
+/** The conversation as Claude reads it, one line per message: text, not cache markers. */
 const asLines = (params: BetaMessageStreamParams | undefined) =>
-  (params?.messages ?? []).map(
-    (m) => `${m.role}: ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`,
-  );
+  (params?.messages ?? []).map((m) => {
+    const text =
+      typeof m.content === 'string'
+        ? m.content
+        : m.content.map((block) => (block.type === 'text' ? block.text : JSON.stringify(block)));
+    return `${m.role}: ${typeof text === 'string' ? text : text.join('')}`;
+  });
 
 describe('rewind, on a real LiveKit session', () => {
   let session: voice.AgentSession | undefined;
