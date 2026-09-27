@@ -88,6 +88,8 @@ describe('readCallConfig', () => {
         COACH_MODEL: 'claude-opus-5',
         COACH_EFFORT: 'low',
         TURN_DETECTOR: 'multilingual',
+        DEMO_WORKER: 'on',
+        DEMO_MODEL: 'claude-opus-5',
       },
     });
   });

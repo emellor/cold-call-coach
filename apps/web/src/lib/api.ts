@@ -6,6 +6,9 @@ import {
   CreateCallResponse,
   type CreateScenarioRequest,
   CreateScenarioResponse,
+  DemoDetail,
+  DemoListResponse,
+  GenerateDemosResponse,
   HealthResponse,
   type LoginRequest,
   ReviewRerunResponse,
@@ -96,6 +99,33 @@ export async function removeScenario(id: string): Promise<void> {
     error.success ? error.data.error : `Couldn't remove her (${res.status}).`,
   );
 }
+
+/** `GET /api/demos`: the demo calls, newest batch first. */
+export function fetchDemos(signal?: AbortSignal): Promise<DemoListResponse> {
+  return request(DemoListResponse, '/api/demos', { signal });
+}
+
+/** `GET /api/demos/:id`: one demo call with its lines and notes. */
+export function fetchDemo(id: string, signal?: AbortSignal): Promise<DemoDetail> {
+  return request(DemoDetail, `/api/demos/${encodeURIComponent(id)}`, { signal });
+}
+
+/** `POST /api/demos/generate`: queues a batch for the voice agent to write. */
+export function generateDemos(count: number): Promise<GenerateDemosResponse> {
+  return request(GenerateDemosResponse, '/api/demos/generate', {
+    method: 'POST',
+    body: JSON.stringify({ count }),
+  });
+}
+
+/** `POST /api/demos/retry`: puts the failed demo calls back in the queue. */
+export function retryDemos(): Promise<GenerateDemosResponse> {
+  return request(GenerateDemosResponse, '/api/demos/retry', { method: 'POST' });
+}
+
+/** Where a demo line's MP3 is served. */
+export const demoAudioUrl = (id: string, idx: number): string =>
+  `/api/demos/${encodeURIComponent(id)}/turns/${idx}/audio`;
 
 /** `GET /api/calls`: the call history, newest first. */
 export function fetchCalls(signal?: AbortSignal): Promise<CallListResponse> {

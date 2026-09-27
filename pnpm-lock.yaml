@@ -71,6 +71,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.128.0
         version: 0.128.0(zod@4.6.5)
+      '@cartesia/cartesia-js':
+        specifier: 4.2.0
+        version: 4.2.0(ws@8.21.3)
       '@ccc/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

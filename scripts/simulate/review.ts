@@ -20,7 +20,7 @@ import {
 } from '@ccc/core';
 import type { JudgedTurn } from '../../apps/agent/src/prospect/brain.ts';
 import { type StreamingMessages, claudeReviewer } from '../../apps/api/src/review/reviewer.ts';
-import type { SimOutcome, SimResult } from './harness.ts';
+import type { SimOutcome, SimResult } from '../../apps/agent/src/simulate/harness.ts';
 
 const GAP_MS = 600;
 /** Speaking rates for laying a text-only call out in time: 150 and 160 words a minute. */

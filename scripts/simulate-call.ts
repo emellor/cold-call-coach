@@ -15,8 +15,13 @@ import { ScenarioCatalog, type ScenarioSpec } from '@ccc/contracts';
 import { createClaude } from '../apps/agent/src/claude/client.ts';
 import { loadDotEnv } from '../apps/agent/src/config.ts';
 import { readPriceTable } from '../apps/api/src/prices.ts';
-import { type SimModels, type SimResult, type SimTurn, simulateCall } from './simulate/harness.ts';
-import { PERSONAS, type PersonaId } from './simulate/personas.ts';
+import {
+  type SimModels,
+  type SimResult,
+  type SimTurn,
+  simulateCall,
+} from '../apps/agent/src/simulate/harness.ts';
+import { PERSONAS, type PersonaId } from '../apps/agent/src/simulate/personas.ts';
 import { reviewSimulatedCall } from './simulate/review.ts';
 
 const USAGE = `Usage: pnpm simulate [options]
