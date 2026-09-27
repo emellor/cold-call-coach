@@ -2,7 +2,8 @@
 // Times are milliseconds from the moment she picked up.
 import { z } from 'zod';
 import { CallOutcome } from './call.ts';
-import { ProspectState } from './judge.ts';
+import { CallStage, ProspectState } from './judge.ts';
+import { FactKey } from './scenario.ts';
 import { DebugLatencyPayload } from './topics.ts';
 
 const ms = z.int().nonnegative();
@@ -74,6 +75,25 @@ export const HintEventPayload = z.object({
   ms,
 });
 export type HintEventPayload = z.infer<typeof HintEventPayload>;
+
+/**
+ * The live judge's reading of one rep turn, and how her mood moved because of
+ * it. `turn` counts rep turns from 1; a rewind reuses the number for the
+ * retake, so the last event for a number is the one that stands.
+ */
+export const JudgementEventPayload = z.object({
+  turn: z.int().positive(),
+  /** False when the judge failed: nothing was read, and only the patience decay applied. */
+  judged: z.boolean(),
+  stage: CallStage,
+  /** The names of the JudgeSignals that were on. */
+  signals: z.array(z.string()),
+  revealEarned: FactKey.nullable(),
+  /** Before and after the turn. */
+  interest: z.tuple([z.number(), z.number()]),
+  patience: z.tuple([z.number(), z.number()]),
+});
+export type JudgementEventPayload = z.infer<typeof JudgementEventPayload>;
 
 /** The rep took back their last turn (and her reply to it) and retook it. */
 export const RewindEventPayload = z.object({

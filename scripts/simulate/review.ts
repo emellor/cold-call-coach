@@ -13,9 +13,12 @@ import {
   type DroppedQuote,
   type Effort,
   type MetricTurn,
+  type ReviewTranscriptTurn,
+  type TurnReaction,
   computeMetrics,
   finalizeReview,
 } from '@ccc/core';
+import type { JudgedTurn } from '../../apps/agent/src/prospect/brain.ts';
 import { type StreamingMessages, claudeReviewer } from '../../apps/api/src/review/reviewer.ts';
 import type { SimOutcome, SimResult } from './harness.ts';
 
@@ -50,6 +53,35 @@ export function timedTurns(result: SimResult, openingLine: string): MetricTurn[]
   return turns;
 }
 
+/** How she took a rep turn, as a real call's judgement event would record it. */
+export function reactionOf(judged: JudgedTurn): TurnReaction {
+  const { judge, before, after } = judged;
+  return {
+    interest: [before.interest, after.interest],
+    patience: [before.patience, after.patience],
+    reading: judged.judged
+      ? {
+          stage: judge.stage,
+          signals: Object.entries(judge.signals)
+            .filter(([, on]) => on)
+            .map(([name]) => name),
+          revealed: judge.revealEarned,
+        }
+      : null,
+  };
+}
+
+/** The timed turns for the review, each rep turn with how she took it. */
+function reviewTurns(turns: readonly MetricTurn[], result: SimResult): ReviewTranscriptTurn[] {
+  let repTurn = 0;
+  return turns.map((turn) => {
+    const line = { ...turn, interrupted: false };
+    if (turn.speaker !== 'rep') return line;
+    const judged = result.turns[repTurn++]?.judged;
+    return judged ? { ...line, reaction: reactionOf(judged) } : line;
+  });
+}
+
 export async function reviewSimulatedCall(options: {
   messages: StreamingMessages;
   model: string;
@@ -81,7 +113,7 @@ export async function reviewSimulatedCall(options: {
     metrics: computeMetrics(turns, durationMs),
     outcome: OUTCOMES[result.outcome],
     outcomeReason: result.detail ?? null,
-    turns: turns.map((t) => ({ ...t, interrupted: false })),
+    turns: reviewTurns(turns, result),
   });
   const { result: review, dropped } = finalizeReview(
     outcome.draft,

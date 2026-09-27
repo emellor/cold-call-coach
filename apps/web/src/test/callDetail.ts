@@ -12,23 +12,47 @@ export const reviewResult: ReviewResult = {
       score: 4,
       evidence: [{ turn: 2, quote: 'Have you got thirty seconds?' }],
       feedback: 'Good permission ask.',
+      nextTime: 'Keep the permission ask, and give your reason straight after it.',
     },
     {
       key: 'reason',
       score: 2,
       evidence: [{ turn: 4, quote: 'We do per-site dashboards' }],
       feedback: 'Lead with her problem.',
+      nextTime: 'Say what finance directors like her struggle with before naming a feature.',
     },
-    { key: 'discovery', score: 1, evidence: [], feedback: 'No open questions.' },
-    { key: 'objections', score: 2, evidence: [], feedback: 'Acknowledge first.' },
-    { key: 'next_step', score: 1, evidence: [], feedback: 'No specific ask.' },
-    { key: 'delivery', score: 3, evidence: [], feedback: 'A little fast.' },
+    { key: 'discovery', score: 1, evidence: [], feedback: 'No open questions.', nextTime: '' },
+    { key: 'objections', score: 2, evidence: [], feedback: 'Acknowledge first.', nextTime: '' },
+    { key: 'next_step', score: 1, evidence: [], feedback: 'No specific ask.', nextTime: '' },
+    { key: 'delivery', score: 3, evidence: [], feedback: 'A little fast.', nextTime: '' },
   ],
-  topMoments: [
+  moments: [
+    {
+      turn: 2,
+      kind: 'strong',
+      stage: 'opener',
+      quote: 'Have you got thirty seconds?',
+      whatHappened: 'You asked for her time before you pitched.',
+      sayInstead: '',
+      why: 'Asking permission lowers her guard.',
+    },
+    {
+      turn: 3,
+      kind: 'missed',
+      stage: 'objections',
+      quote: "I'm about to go into a meeting",
+      whatHappened: 'She gave you the chance to book a callback.',
+      sayInstead: 'Of course. Could I call you back at three?',
+      why: 'Accept the brush-off and book the next conversation.',
+    },
     {
       turn: 4,
-      youSaid: 'We do per-site dashboards',
-      tryInstead: 'Finance directors tell me energy bills are the line the board asks about most.',
+      kind: 'mistake',
+      stage: 'reason',
+      quote: 'We do per-site dashboards',
+      whatHappened:
+        'You listed features before finding a problem; her patience fell from 62 to 43.',
+      sayInstead: 'Finance directors tell me energy bills are the line the board asks about most.',
       why: 'Lead with a problem she recognises.',
     },
   ],
@@ -42,8 +66,38 @@ export const reviewResult: ReviewResult = {
     },
   ],
   strengths: ['Clear opener'],
+  priorities: [
+    'Lead with her problem, not your features.',
+    'When she is busy, offer a callback at a specific time.',
+    'Ask one open question before you pitch anything.',
+  ],
   drill: { title: 'Problem-first reasons', instructions: 'Write three reasons in her words.' },
   quotesDropped: 1,
+};
+
+/** A review stored before the walkthrough: three top moments, no priorities or next-time notes. */
+export const olderReviewResult: ReviewResult = {
+  outcome: reviewResult.outcome,
+  overallScore: reviewResult.overallScore,
+  summary: reviewResult.summary,
+  stages: reviewResult.stages.map(({ key, score, evidence, feedback }) => ({
+    key,
+    score,
+    evidence,
+    feedback,
+  })),
+  topMoments: [
+    {
+      turn: 4,
+      youSaid: 'We do per-site dashboards',
+      tryInstead: 'Finance directors tell me energy bills are the line the board asks about most.',
+      why: 'Lead with a problem she recognises.',
+    },
+  ],
+  objections: reviewResult.objections,
+  strengths: reviewResult.strengths,
+  drill: reviewResult.drill,
+  quotesDropped: 0,
 };
 
 const review = (patch: Partial<CallReview>): CallReview => ({

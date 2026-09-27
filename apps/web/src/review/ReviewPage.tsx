@@ -6,16 +6,20 @@ import { rerunReview } from '../lib/api.ts';
 import { CostSection } from './CostSection.tsx';
 import { Scorecard } from './Scorecard.tsx';
 import { OUTCOME_LABELS, OUTCOME_TONE, STAGE_LABELS, dateTime, duration } from './format.ts';
+import { MOMENT_LABELS, walkthrough } from './moments.ts';
 import { useCallDetail } from './useCallDetail.ts';
 
-/** What the review says about each turn, shown beside it in the transcript. */
+/** What the review says about each turn, shown beside it in the transcript, each note once. */
 function annotations(review: ReviewResult | null): Map<number, string[]> {
-  const notes = new Map<number, string[]>();
-  const add = (turn: number, note: string) => notes.set(turn, [...(notes.get(turn) ?? []), note]);
-  review?.topMoments.forEach((m, i) => add(m.turn, `Moment ${i + 1}`));
-  review?.objections.forEach((o) => add(o.turn, 'Objection answered'));
-  review?.stages.forEach((s) => s.evidence.forEach((e) => add(e.turn, STAGE_LABELS[s.key])));
-  return notes;
+  const notes = new Map<number, Set<string>>();
+  const add = (turn: number, note: string) =>
+    notes.set(turn, (notes.get(turn) ?? new Set()).add(note));
+  if (review) {
+    walkthrough(review).forEach((m) => add(m.turn, MOMENT_LABELS[m.kind]));
+    review.objections.forEach((o) => add(o.turn, 'Objection answered'));
+    review.stages.forEach((s) => s.evidence.forEach((e) => add(e.turn, STAGE_LABELS[s.key])));
+  }
+  return new Map([...notes].map(([turn, set]) => [turn, [...set]]));
 }
 
 function Transcript(props: {
@@ -94,7 +98,7 @@ function ReviewStatusPanel(props: {
       <div className={box} role="status">
         <p className="animate-pulse font-medium motion-reduce:animate-none">Reviewing…</p>
         <p className="mt-1 text-sm text-slate-400">
-          Your coach is reading the call. This usually takes under half a minute.
+          Your coach is going through the call turn by turn. This usually takes a minute or two.
         </p>
       </div>
     );
@@ -224,7 +228,12 @@ function Loaded(props: {
               )}
             </p>
           )}
-          {result && <p className="mt-3 max-w-2xl text-slate-200">{result.summary}</p>}
+          {result && (
+            <>
+              <p className="mt-2 max-w-2xl text-sm text-slate-400">{result.outcome}</p>
+              <p className="mt-3 max-w-2xl text-slate-200">{result.summary}</p>
+            </>
+          )}
         </div>
         {result && (
           <div className="text-right">
@@ -240,7 +249,12 @@ function Loaded(props: {
       </section>
 
       {result ? (
-        <Scorecard review={result} metrics={detail.metrics} onTurn={props.onTurn} />
+        <Scorecard
+          review={result}
+          metrics={detail.metrics}
+          turns={detail.turns}
+          onTurn={props.onTurn}
+        />
       ) : (
         <ReviewStatusPanel
           detail={detail}

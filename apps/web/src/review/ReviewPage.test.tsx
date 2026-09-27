@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Router } from 'wouter';
 import { memoryLocation } from 'wouter/memory-location';
-import { CALL_ID, callDetail } from '../test/callDetail.ts';
+import { CALL_ID, callDetail, olderReviewResult } from '../test/callDetail.ts';
 import { ReviewPage } from './ReviewPage.tsx';
 import { POLL_MS } from './useCallDetail.ts';
 
@@ -64,21 +64,50 @@ describe('ReviewPage', () => {
     expect(screen.queryByText('Reviewing…')).not.toBeInTheDocument();
   });
 
-  it('shows the outcome, the moments, every stage, delivery against targets, objections and the drill', async () => {
+  it('shows the outcome, the walkthrough, every stage, delivery against targets, objections and the drill', async () => {
     mockApi([callDetail()]);
     renderPage();
     expect(await screen.findByText('She hung up')).toBeInTheDocument();
     expect(screen.getByText('Out of patience')).toBeInTheDocument();
+    expect(screen.getByText('She hung up after a feature pitch.')).toBeInTheDocument();
     expect(
       screen.getByText('You opened well but pitched features before finding a problem.'),
     ).toBeInTheDocument();
 
-    // The first "Moment 1" is the scorecard's; the transcript's annotation comes later.
-    const moment = screen.getAllByText('Moment 1')[0]!.closest('li')!;
-    expect(within(moment).getByText('We do per-site dashboards')).toBeInTheDocument();
-    expect(within(moment).getByText(/Finance directors tell me/)).toBeInTheDocument();
+    const next = within(
+      screen.getByRole('heading', { name: 'Your next call' }).closest('section')!,
+    );
+    expect(next.getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'Lead with her problem, not your features.',
+      'When she is busy, offer a callback at a specific time.',
+      'Ask one open question before you pitch anything.',
+    ]);
+
+    // Turn by turn: each moment at its time, what happened, what to say instead and why.
+    const walk = screen.getByRole('list', { name: 'Moments, in the order they happened' });
+    expect(walk.closest('section')).toHaveTextContent(
+      '1 mistake · 1 missed chance · 1 strong moment',
+    );
+    const [strong, missed, mistake] = within(walk).getAllByRole('listitem') as [
+      HTMLElement,
+      HTMLElement,
+      HTMLElement,
+    ];
+    expect(strong).toHaveTextContent('0:01✓ WorkedOpener');
+    expect(strong).toHaveTextContent('You said: Have you got thirty seconds?');
+    expect(strong).toHaveTextContent('Why it worked: Asking permission lowers her guard.');
+    expect(within(strong).queryByText('Say instead')).toBeNull();
+    expect(missed).toHaveTextContent('0:06◌ Missed chanceObjections');
+    expect(missed).toHaveTextContent("She said: I'm about to go into a meeting");
+    expect(missed).toHaveTextContent('Say insteadOf course. Could I call you back at three?');
+    expect(mistake).toHaveTextContent('0:07✗ Went wrongReason for call');
+    expect(mistake).toHaveTextContent('her patience fell from 62 to 43');
+    expect(mistake).toHaveTextContent('Why it works: Lead with a problem she recognises.');
 
     expect(screen.getByRole('img', { name: 'Opener: 4 out of 5' })).toBeInTheDocument();
+    expect(
+      screen.getByText('Keep the permission ask, and give your reason straight after it.'),
+    ).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Discovery: 1 out of 5' })).toBeInTheDocument();
 
     const pace = screen.getByRole('rowheader', { name: 'Pace' }).closest('tr')!;
@@ -99,14 +128,30 @@ describe('ReviewPage', () => {
       'li',
     )!;
     expect(turn4.id).toBe('turn-4');
-    expect(within(turn4).getByText('Moment 1')).toBeInTheDocument();
+    expect(within(turn4).getByText('Went wrong')).toBeInTheDocument();
+    expect(within(turn4).getByText('Objection answered')).toBeInTheDocument();
     expect(within(turn4).getByText('Reason for call')).toBeInTheDocument();
     expect(within(turn4).getByText(/interest 20 · patience 43/)).toBeInTheDocument();
+    const turn3 = document.getElementById('turn-3')!;
+    expect(within(turn3).getByText('Missed chance')).toBeInTheDocument();
 
-    const moment = screen.getAllByText('Moment 1')[0]!.closest('li')!;
-    fireEvent.click(within(moment).getByRole('button', { name: 'turn 4' }));
+    const walk = screen.getByRole('list', { name: 'Moments, in the order they happened' });
+    fireEvent.click(within(walk).getByRole('button', { name: 'turn 4' }));
     expect(scrollIntoView).toHaveBeenCalled();
     expect(turn4.className).toContain('ring-1');
+  });
+
+  it('still shows a review stored before the walkthrough, and says how to get the full one', async () => {
+    mockApi([callDetail({ result: olderReviewResult })]);
+    renderPage();
+    const walk = await screen.findByRole('list', { name: 'Moments, in the order they happened' });
+    const [moment] = within(walk).getAllByRole('listitem');
+    expect(moment).toHaveTextContent('0:07✗ Went wrong');
+    expect(moment).toHaveTextContent('You said: We do per-site dashboards');
+    expect(moment).toHaveTextContent('Say insteadFinance directors tell me');
+    expect(screen.getByText(/review it again for the full version/)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Your next call' })).toBeNull();
+    expect(screen.queryByText(/Next time:/)).toBeNull();
   });
 
   it('offers to rerun a failed review, and starts polling again', async () => {

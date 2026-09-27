@@ -1,5 +1,5 @@
 // A short, realistic call log for the API's tests, and a stub reviewer.
-import type { CallLog, ReviewDraft } from '@ccc/contracts';
+import type { CallLog, CallStage, JudgementEventPayload, ReviewDraft } from '@ccc/contracts';
 import { eq } from 'drizzle-orm';
 import type { Db } from '../db/client.ts';
 import { LOCAL_USER_ID, calls } from '../db/schema.ts';
@@ -21,6 +21,22 @@ const state = (turn: number, interest: number, patience: number) => ({
   interest,
   patience,
   painsRevealed: [],
+});
+
+/** A `judgement` event's payload: the live judge's reading of rep turn `turn`. */
+const judgement = (
+  turn: number,
+  stage: CallStage,
+  signals: string[],
+  patience: [number, number],
+): JudgementEventPayload => ({
+  turn,
+  judged: true,
+  stage,
+  signals,
+  revealEarned: null,
+  interest: [20, 20],
+  patience,
 });
 
 export function sampleLog(overrides: Partial<CallLog> = {}): CallLog {
@@ -89,7 +105,12 @@ export function sampleLog(overrides: Partial<CallLog> = {}): CallLog {
       {
         tMs: 9_200,
         kind: 'judgement',
-        payload: { turn: 1, stage: 'opener', signals: ['pitchedFeatures'] },
+        payload: judgement(1, 'opener', ['pitchedFeatures'], [55, 44]),
+      },
+      {
+        tMs: 16_200,
+        kind: 'judgement',
+        payload: judgement(2, 'objection_handling', ['ignoredHerPoint', 'pushy'], [44, 21]),
       },
       { tMs: 18_600, kind: 'tool_call', payload: { name: 'end_call', reason: 'Out of patience' } },
       { tMs: 18_700, kind: 'outcome', payload: { outcome: 'hung_up_by_prospect' } },
@@ -136,14 +157,36 @@ export const sampleDraft: ReviewDraft = {
             ]
           : [],
       feedback: `Feedback on ${key}.`,
+      nextTime: `Next time, on ${key}: ask first.`,
     }),
   ),
-  topMoments: [
+  moments: [
     {
       turn: 4,
-      youSaid: 'It will only take a minute.',
-      tryInstead: 'Sounds like now is bad. When is better, Tuesday at ten?',
+      kind: 'mistake',
+      stage: 'objections',
+      quote: 'It will only take a minute.',
+      whatHappened: 'She told you she was busy and you pushed on; her patience fell to 21.',
+      sayInstead: 'Sounds like now is bad. When is better, Tuesday at ten?',
       why: 'Respect her time and ask for a specific slot.',
+    },
+    {
+      turn: 3,
+      kind: 'missed',
+      stage: 'objections',
+      quote: "I'm about to go into a meeting",
+      whatHappened: 'A brush-off you could have turned into a callback.',
+      sayInstead: 'Of course. Could I call you back at three?',
+      why: 'Accept the brush-off and book the next touch.',
+    },
+    {
+      turn: 2,
+      kind: 'strong',
+      stage: 'opener',
+      quote: "it's Sam from WattGuard",
+      whatHappened: 'You said who you were straight away.',
+      sayInstead: 'ignored for a strong moment',
+      why: 'She knows who is calling before she decides whether to listen.',
     },
   ],
   objections: [
@@ -156,6 +199,7 @@ export const sampleDraft: ReviewDraft = {
     },
   ],
   strengths: ['You said who you were.'],
+  priorities: ['Ask for thirty seconds before you pitch.', 'Offer a callback when she is busy.'],
   drill: {
     title: 'Permission openers',
     instructions: 'Practise asking for thirty seconds, ten times.',

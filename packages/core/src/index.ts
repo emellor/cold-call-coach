@@ -22,4 +22,5 @@ export * from './prospect/systemPrompt.ts';
 export * from './report/latency.ts';
 export * from './review/controls.ts';
 export * from './review/prompt.ts';
+export * from './review/reactions.ts';
 export * from './review/validateQuotes.ts';
