@@ -42,7 +42,7 @@ services:
         sync: false
       - key: LIVEKIT_API_SECRET
         sync: false
-      # The post-call review, and "Add new" writing prospects.
+      # The post-call review, "Add new" writing prospects, and the demo calls.
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: REVIEW_MODEL
@@ -107,10 +107,6 @@ services:
         value: claude-opus-5
       - key: COACH_EFFORT
         value: low
-      # Demo calls: the expert rep and the notes on its lines. Its voice is the
-      # first British man in Cartesia's library unless DEMO_REP_VOICE_ID is set.
-      - key: DEMO_MODEL
-        value: claude-opus-5
 
 databases:
   - name: cold-call-coach-db

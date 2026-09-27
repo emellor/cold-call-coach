@@ -1,7 +1,6 @@
 // What a batch of demo calls covers: each demo pairs a prospect with an
 // approach the expert rep takes, so twenty demos show twenty ways into a call
 // rather than one call twenty times.
-import { DEMO_GAP_MS } from '@ccc/contracts';
 
 /** The approaches, one per demo, in the order a batch hands them out. */
 export const DEMO_ANGLES: readonly string[] = [
@@ -32,11 +31,4 @@ export function demoPlan(count: number, scenarioIds: readonly string[]): DemoPla
     scenarioId: scenarioIds[i % scenarioIds.length]!,
     angle: DEMO_ANGLES[i % DEMO_ANGLES.length]!,
   }));
-}
-
-/** How long a demo runs as it plays: every line's audio plus the gaps between them. */
-export function demoDurationMs(audioMs: readonly (number | null)[]): number | null {
-  const voiced = audioMs.filter((ms): ms is number => ms !== null);
-  if (!voiced.length) return null;
-  return voiced.reduce((sum, ms) => sum + ms, 0) + DEMO_GAP_MS * (voiced.length - 1);
 }

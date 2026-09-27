@@ -1,6 +1,6 @@
 import type { DemoDetail, DemoSummary } from '@ccc/contracts';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Router } from 'wouter';
 import { memoryLocation } from 'wouter/memory-location';
 import { DemoPage } from './DemoPage.tsx';
@@ -41,7 +41,6 @@ const summary = (patch: Partial<DemoSummary>): DemoSummary => ({
   title: 'Permission, then discovery',
   prospect: PROSPECT,
   outcome: 'meeting_booked',
-  durationMs: 94_000,
   error: null,
   createdAt: '2026-09-27T14:00:00.000Z',
   ...patch,
@@ -52,7 +51,7 @@ const DETAIL: DemoDetail = {
   summary: 'The rep earns thirty seconds, finds the board pressure and books the meeting.',
   lessons: ['Ask for thirty seconds first.', 'Follow up on her exact words.'],
   outcomeDetail: 'Tuesday at 10am',
-  costUsd: 0.64,
+  costUsd: 0.08,
   turns: [
     {
       idx: 0,
@@ -60,9 +59,6 @@ const DETAIL: DemoDetail = {
       text: 'Claire Hughes.',
       technique: null,
       note: null,
-      interest: null,
-      patience: null,
-      audioMs: 800,
     },
     {
       idx: 1,
@@ -70,9 +66,6 @@ const DETAIL: DemoDetail = {
       text: 'Hi Claire, it’s Sam from WattGuard. Have I caught you at a bad time?',
       technique: 'Permission opener',
       note: 'She hears who is calling and gets to say yes before any pitch.',
-      interest: 24,
-      patience: 53,
-      audioMs: 3_100,
     },
     {
       idx: 2,
@@ -80,9 +73,6 @@ const DETAIL: DemoDetail = {
       text: 'Go on, quickly.',
       technique: null,
       note: null,
-      interest: null,
-      patience: null,
-      audioMs: null,
     },
     {
       idx: 3,
@@ -90,9 +80,6 @@ const DETAIL: DemoDetail = {
       text: 'How are you tracking energy across your three warehouses today?',
       technique: 'Open discovery question',
       note: 'Gets her talking about her world, not your product.',
-      interest: 31,
-      patience: 51,
-      audioMs: 2_600,
     },
   ],
 };
@@ -110,7 +97,7 @@ describe('DemosPage', () => {
       </Router>,
     );
 
-  it('lists the demo calls, ready ones linking to their player', async () => {
+  it('lists the demo calls, ready ones linking to their transcript', async () => {
     answerAll(200, {
       demos: [
         summary({}),
@@ -120,8 +107,7 @@ describe('DemosPage', () => {
           status: 'failed',
           title: null,
           outcome: null,
-          durationMs: null,
-          error: 'Cartesia answered 402',
+          error: 'Claude answered 400: Your credit balance is too low',
         }),
       ],
     });
@@ -132,9 +118,9 @@ describe('DemosPage', () => {
     expect(ready).toHaveTextContent('Permission, then discovery');
     expect(ready).toHaveTextContent('Meeting booked');
     expect(ready).toHaveTextContent('Claire Hughes, Finance Director');
-    expect(ready).toHaveTextContent('1:34');
+    expect(ready).toHaveTextContent('Read the call');
     expect(failed).toHaveTextContent('Failed');
-    expect(failed).toHaveTextContent('Cartesia answered 402');
+    expect(failed).toHaveTextContent('credit balance is too low');
     expect(within(failed!).queryByRole('link')).toBeNull();
     expect(screen.getByRole('button', { name: 'Retry 1 failed' })).toBeEnabled();
   });
@@ -146,14 +132,13 @@ describe('DemosPage', () => {
       if (init?.method === 'POST') {
         posts.push([urlOf(input), init.body as string | undefined]);
         listed = [
-          summary({ status: 'generating', title: null, outcome: null, durationMs: null }),
+          summary({ status: 'generating', title: null, outcome: null }),
           summary({
             id: '9b0a4e2c-2b1f-4f55-9a0c-6d3f1c1e8a10',
             position: 2,
             status: 'queued',
             title: null,
             outcome: null,
-            durationMs: null,
           }),
         ];
         return Promise.resolve(json(202, { queued: 2 }));
@@ -174,7 +159,7 @@ describe('DemosPage', () => {
 
     fireEvent.click(generate);
     expect(
-      await screen.findByText(/0 of 2 demo calls ready\. Writing #1 now\./),
+      await screen.findByText(/0 of 2 demo calls written\. Claude is writing 1 now\./),
     ).toBeInTheDocument();
     expect(posts).toEqual([['/api/demos/generate', JSON.stringify({ count: 20 })]]);
     expect(screen.getByRole('progressbar', { name: 'Demo calls ready' })).toHaveAttribute(
@@ -189,7 +174,8 @@ describe('DemosPage', () => {
       Promise.resolve(
         init?.method === 'POST'
           ? json(503, {
-              error: 'The voice agent writes the demos and collects them with INTERNAL_API_SECRET.',
+              error:
+                'Demo calls need ANTHROPIC_API_KEY on the API: set it, restart, and try again.',
             })
           : json(200, { demos: [] }),
       ),
@@ -197,26 +183,12 @@ describe('DemosPage', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: 'Generate 20 demo calls' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('INTERNAL_API_SECRET');
+    expect(await screen.findByRole('alert')).toHaveTextContent('ANTHROPIC_API_KEY');
   });
 });
 
 describe('DemoPage', () => {
-  let play: ReturnType<typeof vi.fn>;
-  let pause: ReturnType<typeof vi.fn>;
-  beforeEach(() => {
-    play = vi.fn(() => Promise.resolve());
-    pause = vi.fn();
-    Object.defineProperty(HTMLMediaElement.prototype, 'play', { configurable: true, value: play });
-    Object.defineProperty(HTMLMediaElement.prototype, 'pause', {
-      configurable: true,
-      value: pause,
-    });
-  });
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.useRealTimers();
-  });
+  afterEach(() => vi.restoreAllMocks());
 
   const renderDemo = () =>
     render(
@@ -225,7 +197,7 @@ describe('DemoPage', () => {
       </Router>,
     );
 
-  it('shows what the call teaches, and every rep line with its technique', async () => {
+  it('shows the whole call to read, with the technique under every rep line', async () => {
     answerAll(200, DETAIL);
     renderDemo();
     expect(
@@ -236,56 +208,29 @@ describe('DemoPage', () => {
     const call = screen.getByRole('list', { name: 'The call' });
     const lines = within(call).getAllByRole('listitem');
     expect(lines).toHaveLength(4);
+    expect(lines[0]).toHaveTextContent('Claire');
+    expect(lines[0]).toHaveTextContent('Claire Hughes.');
+    expect(lines[1]).toHaveTextContent('Rep');
     expect(lines[1]).toHaveTextContent('Permission opener');
     expect(lines[1]).toHaveTextContent('She hears who is calling');
-    expect(lines[1]).toHaveTextContent('interest 24 · patience 53');
-    expect(lines[0]).toHaveTextContent('Claire');
-    // A line with no audio can't be played from.
-    expect(within(lines[2]!).queryByRole('button')).toBeNull();
+    // Her lines carry no notes, and nothing plays.
+    expect(lines[2]).toHaveTextContent('Go on, quickly.');
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByText('Written by Claude for $0.08.')).toBeInTheDocument();
   });
 
-  it('plays the lines in order with a gap between them, highlighting the one playing', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    answerAll(200, DETAIL);
-    const { container } = renderDemo();
-    await act(() => vi.advanceTimersByTimeAsync(0));
-    const audio = container.querySelector('audio')!;
-    const lines = within(screen.getByRole('list', { name: 'The call' })).getAllByRole('listitem');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Play the call' }));
-    expect(audio.getAttribute('src')).toBe(`/api/demos/${ID}/turns/0/audio`);
-    expect(play).toHaveBeenCalledTimes(1);
-    expect(lines[0]).toHaveAttribute('aria-current', 'true');
-    expect(screen.getByText('Line 1 of 3')).toBeInTheDocument();
-
-    fireEvent(audio, new Event('ended'));
-    await act(() => vi.advanceTimersByTimeAsync(450));
-    expect(audio.getAttribute('src')).toBe(`/api/demos/${ID}/turns/1/audio`);
-    expect(lines[1]).toHaveAttribute('aria-current', 'true');
-
-    // Line 2 has no audio, so the next one after line 1 is line 3.
-    fireEvent(audio, new Event('ended'));
-    await act(() => vi.advanceTimersByTimeAsync(450));
-    expect(audio.getAttribute('src')).toBe(`/api/demos/${ID}/turns/3/audio`);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
-    expect(pause).toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
-
-    fireEvent(audio, new Event('ended'));
-    expect(screen.getByRole('button', { name: 'Play the call' })).toBeInTheDocument();
-  });
-
-  it('plays from any line you pick', async () => {
-    answerAll(200, DETAIL);
-    const { container } = renderDemo();
-    const call = await screen.findByRole('list', { name: 'The call' });
-    const lines = within(call).getAllByRole('listitem');
-    fireEvent.click(within(lines[3]!).getByRole('button', { name: 'Play from here' }));
-    expect(container.querySelector('audio')!.getAttribute('src')).toBe(
-      `/api/demos/${ID}/turns/3/audio`,
-    );
-    expect(screen.getByText('Line 3 of 3')).toBeInTheDocument();
+  it('says why a failed demo has no call to read', async () => {
+    answerAll(200, {
+      ...DETAIL,
+      status: 'failed',
+      error: 'Claude answered 400: Your credit balance is too low',
+      turns: [],
+    });
+    renderDemo();
+    expect(
+      await screen.findByText(/This demo call wasn't written: Claude answered 400/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'The call' })).toBeNull();
   });
 
   it('says so when the demo does not exist', async () => {

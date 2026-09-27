@@ -69,12 +69,6 @@ const CallConfig = z.object({
   TURN_DETECTOR: blankAsUnset(z.enum(['multilingual', 'audio']).default('multilingual')),
   /** Where call logs wait when the API can't be reached (default: the OS temp dir). */
   AGENT_SPOOL_DIR: blankAsUnset(z.string().min(1).optional()),
-  /** `off` stops the agent writing demo calls. */
-  DEMO_WORKER: blankAsUnset(z.enum(['on', 'off']).default('on')),
-  /** The demo calls' expert rep, and the notes on its technique. */
-  DEMO_MODEL: blankAsUnset(z.string().min(1).default('claude-opus-5')),
-  /** The demo rep's Cartesia voice; unset, the library's first British man. */
-  DEMO_REP_VOICE_ID: blankAsUnset(z.string().min(1).optional()),
 });
 export type CallConfig = z.infer<typeof CallConfig>;
 

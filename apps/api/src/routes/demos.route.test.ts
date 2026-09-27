@@ -1,79 +1,49 @@
-import {
-  DemoClaimResponse,
-  DemoDetail,
-  DemoListResponse,
-  type DemoResultRequest,
-  INTERNAL_SECRET_HEADER,
-} from '@ccc/contracts';
+import { randomUUID } from 'node:crypto';
+import { DemoDetail, DemoListResponse, ScenarioListResponse } from '@ccc/contracts';
+import { DEMO_ANGLES, demoPlan } from '@ccc/core';
 import { eq, inArray, notInArray, sql } from 'drizzle-orm';
-import type { FastifyInstance, InjectOptions } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.ts';
 import { loadConfig } from '../config.ts';
 import { createDb } from '../db/client.ts';
-import { demos } from '../db/schema.ts';
+import { demoTurns, demos } from '../db/schema.ts';
 import { MAX_ATTEMPTS } from '../demos/store.ts';
+import { NO_DEMO_WRITER_MESSAGE } from '../demos/writer.ts';
 import { testCatalog } from '../test/catalog.ts';
 import { databaseAvailable, testDatabaseUrl } from '../test/db.ts';
-import { NO_AGENT_SECRET_MESSAGE } from './demos.ts';
+import { stubDemoWriter, writtenDemo } from '../test/demos.ts';
 
 const hasDb = await databaseAvailable();
-const SECRET = 'route-test-internal-secret';
-const MP3 = Buffer.from('ID3 pretend mp3 bytes');
-
-const result = (patch: Partial<DemoResultRequest> = {}): DemoResultRequest => ({
-  scenarioVersion: 1,
-  title: 'Earning thirty seconds',
-  summary: 'A permission opener, then discovery.',
-  lessons: ['Ask first.', 'Follow up on her words.'],
-  outcome: 'meeting_booked',
-  outcomeDetail: 'Tuesday at 10am',
-  costUsd: 0.62,
-  turns: [
-    {
-      idx: 0,
-      speaker: 'prospect',
-      text: 'Claire Hughes.',
-      technique: null,
-      note: null,
-      interest: null,
-      patience: null,
-      audioMs: 900,
-      audio: MP3.toString('base64'),
-    },
-    {
-      idx: 1,
-      speaker: 'rep',
-      text: 'Hi Claire, it’s Sam from WattGuard. Have I caught you at a bad time?',
-      technique: 'Permission opener',
-      note: 'Lowers her guard before any pitch.',
-      interest: 24,
-      patience: 53,
-      audioMs: null,
-      audio: null,
-    },
-  ],
-  ...patch,
-});
+const BROKEN = DEMO_ANGLES[2]!;
 
 describe.skipIf(!hasDb)('demo call routes (real Postgres)', () => {
   const { pool, db } = createDb(testDatabaseUrl);
+  const stub = stubDemoWriter({
+    failOn: (angle) => (angle === BROKEN && failing ? 'Claude answered 400: no credit' : null),
+  });
+  let failing = true;
   let app: FastifyInstance;
   let before: string[] = [];
 
-  const internal = (url: string, payload?: object, secret: string | null = SECRET) => {
-    const options: InjectOptions = {
-      method: 'POST',
-      url,
-      headers: secret === null ? {} : { [INTERNAL_SECRET_HEADER]: secret },
-    };
-    if (payload !== undefined) options.payload = payload;
-    return app.inject(options);
-  };
-  const claim = async () =>
-    DemoClaimResponse.parse((await internal('/internal/demos/claim')).json()).job;
-  const list = async () =>
-    DemoListResponse.parse((await app.inject({ method: 'GET', url: '/api/demos' })).json()).demos;
+  const build = (demoWriter: typeof stub.writer | null) =>
+    buildApp(
+      {
+        config: loadConfig({ DATABASE_URL: testDatabaseUrl }),
+        pool,
+        db,
+        catalog: testCatalog,
+        prospectWriter: null,
+        demoWriter,
+      },
+      { webDistDir: '/nonexistent' },
+    );
+  const list = async (target = app) =>
+    DemoListResponse.parse(
+      (await target.inject({ method: 'GET', url: '/api/demos' })).json(),
+    ).demos.filter((d) => !before.includes(d.id));
+  const detail = async (id: string) =>
+    DemoDetail.parse((await app.inject({ method: 'GET', url: `/api/demos/${id}` })).json());
 
   beforeAll(async () => {
     // Demos someone already had in this database are left as they are.
@@ -84,16 +54,7 @@ describe.skipIf(!hasDb)('demo call routes (real Postgres)', () => {
         .set({ status: 'failed', error: 'set aside by the route tests' })
         .where(inArray(demos.status, ['queued', 'generating']));
     }
-    app = await buildApp(
-      {
-        config: loadConfig({ DATABASE_URL: testDatabaseUrl, INTERNAL_API_SECRET: SECRET }),
-        pool,
-        db,
-        catalog: testCatalog,
-        prospectWriter: null,
-      },
-      { webDistDir: '/nonexistent' },
-    );
+    app = await build(stub.writer);
   });
 
   afterAll(async () => {
@@ -102,7 +63,8 @@ describe.skipIf(!hasDb)('demo call routes (real Postgres)', () => {
     await pool.end();
   });
 
-  it('queues a batch across the prospects in the picker, and refuses a second while it runs', async () => {
+  it('writes a batch across the prospects, one request each, and refuses a second while it runs', async () => {
+    stub.holdAll();
     const res = await app.inject({
       method: 'POST',
       url: '/api/demos/generate',
@@ -111,103 +73,129 @@ describe.skipIf(!hasDb)('demo call routes (real Postgres)', () => {
     expect(res.statusCode).toBe(202);
     expect(res.json()).toEqual({ queued: 4 });
 
-    const queued = (await list()).filter((d) => !before.includes(d.id));
-    expect(queued.map((d) => [d.position, d.status])).toEqual([
-      [1, 'queued'],
-      [2, 'queued'],
-      [3, 'queued'],
-      [4, 'queued'],
-    ]);
-    expect(queued[0]?.prospect).toEqual({
+    const waiting = await list();
+    expect(waiting.map((d) => d.position)).toEqual([1, 2, 3, 4]);
+    expect(waiting.every((d) => d.status === 'queued' || d.status === 'generating')).toBe(true);
+    expect(waiting[0]?.prospect).toEqual({
       name: 'Priya Shah',
       role: 'Operations Manager',
       company: 'Northgate Bakeries',
       difficulty: 'easy',
     });
-    expect(new Set(queued.map((d) => d.angle)).size).toBe(4);
-
     const again = await app.inject({ method: 'POST', url: '/api/demos/generate', payload: {} });
     expect(again.statusCode).toBe(409);
-    expect(again.json<{ error: string }>().error).toContain('4 demo calls are still being written');
-  });
+    expect(again.json()).toEqual({
+      error: '4 demo calls are still being written: wait for them to finish.',
+    });
 
-  it('hands the agent the oldest demo, stores what it writes, and plays it back line by line', async () => {
-    const job = await claim();
-    expect(job).toMatchObject({ scenarioId: 'easy-ops-manager' });
+    stub.release();
+    await app.demoQueue.idle();
 
-    const posted = await internal(`/internal/demos/${job!.id}/result`, result());
-    expect(posted.statusCode).toBe(204);
-
-    const detail = DemoDetail.parse(
-      (await app.inject({ method: 'GET', url: `/api/demos/${job!.id}` })).json(),
+    // Each demo was one call to the writer, with its own approach, the picker's prospects in turn.
+    const picker = ScenarioListResponse.parse(
+      (await app.inject({ method: 'GET', url: '/api/scenarios' })).json(),
+    ).scenarios.map((s) => s.id);
+    expect(stub.asked).toHaveLength(4);
+    expect(stub.asked.map((a) => a.angle).sort()).toEqual(DEMO_ANGLES.slice(0, 4).toSorted());
+    expect(stub.asked.map((a) => a.scenarioId).sort()).toEqual(
+      demoPlan(4, picker)
+        .map((p) => p.scenarioId)
+        .sort(),
     );
-    expect(detail).toMatchObject({
-      status: 'ready',
-      title: 'Earning thirty seconds',
-      outcome: 'meeting_booked',
-      outcomeDetail: 'Tuesday at 10am',
-      lessons: ['Ask first.', 'Follow up on her words.'],
-      durationMs: 900,
-      costUsd: 0.62,
-    });
-    expect(detail.turns.map((t) => [t.idx, t.speaker, t.technique, t.audioMs])).toEqual([
-      [0, 'prospect', null, 900],
-      [1, 'rep', 'Permission opener', null],
-    ]);
 
-    const audio = await app.inject({
-      method: 'GET',
-      url: `/api/demos/${job!.id}/turns/0/audio`,
+    const written = await list();
+    const [ready, , broken] = written;
+    expect(written.map((d) => d.status)).toEqual(['ready', 'ready', 'failed', 'ready']);
+    expect(ready).toMatchObject({ title: 'Earning thirty seconds', outcome: 'meeting_booked' });
+    expect(broken).toMatchObject({ angle: BROKEN, error: 'Claude answered 400: no credit' });
+
+    const demo = await detail(ready!.id);
+    expect(demo).toMatchObject({
+      summary: writtenDemo.summary,
+      lessons: writtenDemo.lessons,
+      outcomeDetail: writtenDemo.meeting,
+      costUsd: 0.08,
     });
-    expect(audio.statusCode).toBe(200);
-    expect(audio.headers['content-type']).toBe('audio/mpeg');
-    expect(audio.rawPayload.equals(MP3)).toBe(true);
-    const silent = await app.inject({ method: 'GET', url: `/api/demos/${job!.id}/turns/1/audio` });
-    expect(silent.statusCode).toBe(404);
+    expect(demo.turns).toEqual(writtenDemo.lines.map((line, idx) => ({ idx, ...line })));
   });
 
-  it(`retries a failed demo, gives up after ${MAX_ATTEMPTS} tries, and starts again on request`, async () => {
-    const first = await claim();
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      const job = attempt === 1 ? first : await claim();
-      expect(job?.id).toBe(first?.id);
-      const failed = await internal(`/internal/demos/${job!.id}/failed`, { error: 'Cartesia 500' });
-      expect(failed.json()).toEqual({ status: attempt < MAX_ATTEMPTS ? 'queued' : 'failed' });
+  it('never retries a failure by itself, and writes it again when the rep asks', async () => {
+    const [broken] = (await list()).filter((d) => d.status === 'failed');
+    expect(stub.asked.filter((a) => a.angle === BROKEN)).toHaveLength(1);
+
+    failing = false;
+    const res = await app.inject({ method: 'POST', url: '/api/demos/retry' });
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toEqual({ queued: 1 });
+    await app.demoQueue.idle();
+
+    const demo = await detail(broken!.id);
+    expect(demo).toMatchObject({ status: 'ready', error: null });
+    expect(demo.turns).toHaveLength(writtenDemo.lines.length);
+    expect(stub.asked.filter((a) => a.angle === BROKEN)).toHaveLength(2);
+  });
+
+  it('picks up after a restart: once more, then gives up', async () => {
+    const batchId = randomUUID();
+    const [once, twice, gone] = await db
+      .insert(demos)
+      .values([
+        {
+          batchId,
+          position: 1,
+          scenarioId: 'hard-facilities-manager',
+          angle: DEMO_ANGLES[5]!,
+          status: 'generating',
+          attempts: 1,
+        },
+        {
+          batchId,
+          position: 2,
+          scenarioId: 'hard-facilities-manager',
+          angle: DEMO_ANGLES[6]!,
+          status: 'generating',
+          attempts: MAX_ATTEMPTS,
+        },
+        {
+          batchId,
+          position: 3,
+          scenarioId: 'someone-since-removed',
+          angle: DEMO_ANGLES[7]!,
+          status: 'queued',
+        },
+      ])
+      .returning({ id: demos.id });
+
+    expect(await app.demoQueue.resumeUnfinished()).toBe(1);
+    await app.demoQueue.idle();
+
+    expect(await detail(once!.id)).toMatchObject({ status: 'ready' });
+    expect(await detail(twice!.id)).toMatchObject({
+      status: 'failed',
+      error: 'The API restarted while writing this demo. Retry it.',
+    });
+    expect(await detail(gone!.id)).toMatchObject({
+      status: 'failed',
+      error: 'This prospect has been removed, so the call was not written.',
+    });
+    const turns = await db.select().from(demoTurns).where(eq(demoTurns.demoId, twice!.id));
+    expect(turns).toEqual([]);
+  });
+
+  it('says why when demos cannot be written, and 404s an unknown demo', async () => {
+    const off = await build(null);
+    try {
+      for (const url of ['/api/demos/generate', '/api/demos/retry']) {
+        const res = await off.inject({ method: 'POST', url, payload: {} });
+        expect(res.statusCode).toBe(503);
+        expect(res.json()).toEqual({ error: NO_DEMO_WRITER_MESSAGE });
+      }
+    } finally {
+      await off.close();
     }
-    const [row] = await db.select().from(demos).where(eq(demos.id, first!.id));
-    expect(row).toMatchObject({ status: 'failed', error: 'Cartesia 500', attempts: MAX_ATTEMPTS });
-
-    const retried = await app.inject({ method: 'POST', url: '/api/demos/retry' });
-    expect(retried.json<{ queued: number }>().queued).toBeGreaterThanOrEqual(1);
-    const [again] = await db.select().from(demos).where(eq(demos.id, first!.id));
-    expect(again).toMatchObject({ status: 'queued', attempts: 0, error: null });
-  });
-
-  it('takes over a claim its agent abandoned', async () => {
-    const job = await claim();
-    await db
-      .update(demos)
-      .set({ claimedAt: sql`now() - interval '20 minutes'` })
-      .where(eq(demos.id, job!.id));
-    expect((await claim())?.id).toBe(job!.id);
-  });
-
-  it('keeps the agent routes to the agent, and says what generating needs', async () => {
-    expect((await internal('/internal/demos/claim', undefined, null)).statusCode).toBe(401);
-    expect((await internal('/internal/demos/claim', undefined, 'wrong')).statusCode).toBe(401);
-    const missing = await internal(
-      '/internal/demos/00000000-0000-4000-8000-000000000000/result',
-      result(),
-    );
+    const missing = await app.inject({ method: 'GET', url: `/api/demos/${randomUUID()}` });
     expect(missing.statusCode).toBe(404);
-
-    const open = await buildApp(
-      { config: loadConfig({ DATABASE_URL: testDatabaseUrl }), pool, db, catalog: testCatalog },
-      { webDistDir: '/nonexistent' },
-    );
-    const res = await open.inject({ method: 'POST', url: '/api/demos/generate', payload: {} });
-    expect(res.statusCode).toBe(503);
-    expect(res.json<{ error: string }>().error).toBe(NO_AGENT_SECRET_MESSAGE);
-    await open.close();
+    const bad = await app.inject({ method: 'GET', url: '/api/demos/not-a-uuid' });
+    expect(bad.statusCode).toBe(400);
   });
 });

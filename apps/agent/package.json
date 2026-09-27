@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
-    "@cartesia/cartesia-js": "4.2.0",
     "@ccc/contracts": "workspace:*",
     "@ccc/core": "workspace:*",
     "@livekit/agents": "1.9.1",

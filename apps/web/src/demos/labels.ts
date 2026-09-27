@@ -20,4 +20,4 @@ export const STATUS_CHIP: Record<DemoStatus, { label: string; style: string }> =
 };
 
 /** What "Generate" asks before it spends money. */
-export const GENERATE_CONFIRM = `Write ${MAX_DEMO_BATCH} demo calls? The voice agent writes them one at a time in the background: two or three minutes each, so about an hour for all ${MAX_DEMO_BATCH}. Each costs about $0.60–0.80 in Claude and Cartesia usage: $12–16 in all.`;
+export const GENERATE_CONFIRM = `Write ${MAX_DEMO_BATCH} demo calls? Claude writes each one in a single request, three at a time in the background: about ten minutes for all ${MAX_DEMO_BATCH}. Each costs about 10 cents, roughly $2 in all.`;

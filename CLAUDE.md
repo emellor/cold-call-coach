@@ -136,8 +136,8 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
   stage and fact keys unconstrained. A failed or timed-out judgement applies no signals.
 - **`scripts/simulate-call.ts`** drives the same brain, request builders and tools with
   Claude as the rep. The harness and the personas live in `apps/agent/src/simulate/`,
-  because the demo worker runs them in production, where `scripts/` isn't installed.
-  They are unit-tested with a fake Claude (`apps/agent/src/test/fakeClaude.ts`).
+  next to the agent code they drive, and are unit-tested with a fake Claude
+  (`apps/agent/src/test/fakeClaude.ts`).
 - **"Add new"** (`POST /api/scenarios`): the rep describes someone, and
   `apps/api/src/prospects/writer.ts` makes one structured-output call on `REVIEW_MODEL`
   (medium effort) for a `ProspectDraft` (`contracts/prospectDraft.ts`).
@@ -210,38 +210,33 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
 
 ## Demo calls (M7)
 
-- **The API queues them; the agent writes them.** The agent is the one holding the
-  Claude and Cartesia keys and the prospect engine. It has no HTTP server, so it polls
-  the queue.
+- **One Claude call writes each demo, in the API.** A demo is a model cold call to read,
+  with no voice: an expert rep calls one of the prospects with a given approach, and the
+  technique behind every rep line comes with it.
   - `POST /api/demos/generate` puts up to 20 rows in `demos` (migration 0006) as one
     batch. `core/demos/plan.ts` spreads them across the picker's prospects, each with
-    the next of `DEMO_ANGLES`.
-  - A second batch is refused (409) while one is queued or generating.
-- **The worker** (`apps/agent/src/demos/`) runs in the agent's main process, beside
-  LiveKit's worker. `main.ts` starts it after the call settings check out, unless
-  `DEMO_WORKER=off`.
-  - It calls `POST /internal/demos/claim` every 20 s when idle.
-  - A claim is a 15-minute lease, and `FOR UPDATE SKIP LOCKED` hands each demo out once.
-    A demo whose lease runs out is taken over.
-  - A failure is requeued up to `MAX_ATTEMPTS` times, then stays failed until
-    `POST /api/demos/retry`.
-- **Writing one** (`demos/write.ts`):
-  1. `simulateCall` with `expertPersona(angle)` on `DEMO_MODEL`. She and the judge run
-     on `PROSPECT_MODEL`/`COACH_MODEL`, as on a call. A hang-up gets one more try.
-  2. One structured-output call for `DemoNotesDraft`: technique and note per rep line,
-     title, summary, lessons. Prompt in `core/demos/notes.ts`.
-  3. Cartesia's bytes endpoint, one 64 kbit/s MP3 per line, four at a time. The rep's
-     voice is `DEMO_REP_VOICE_ID`, or the library's first British man; hers is
-     `chooseVoice`.
-  4. The whole demo goes back in one `POST /internal/demos/:id/result`, audio as
-     base64, with a 40 MB body limit.
-  - Cost is summed from every Claude call's usage by the model that answered
-    (`simulateCall`'s `onUsage`), plus TTS characters. It is null if anything is
-    unpriced.
-- **Storage and playback.** `demo_turns.audio` is `bytea`, served by
-  `GET /api/demos/:id/turns/:idx/audio` as `audio/mpeg`, cacheable forever. The player
-  (`web/src/demos/DemoPage.tsx`) plays the lines through one `<audio>` element,
-  `DEMO_GAP_MS` apart, skipping any line without audio.
+    the next of `DEMO_ANGLES`. A second batch is refused (409) while one is queued or
+    generating, and 503 without `ANTHROPIC_API_KEY`.
+  - `DemoQueue` (`apps/api/src/demos/queue.ts`) is in-process, like the reviews'. It
+    claims queued rows with `FOR UPDATE SKIP LOCKED`, three at a time, and at boot puts
+    back any a restart interrupted (a second interruption fails it).
+  - `demos/writer.ts` makes one structured-output call for `DemoScriptDraft` on
+    `REVIEW_MODEL` at medium effort, with a 3-minute cap. The prompt and the checks are
+    pure, in `core/demos/script.ts`. The system prompt (product, the rubric's 10/10
+    anchors, how an expert plays it) is the same for every demo and carries a cache
+    breakpoint; her profile, private facts and the approach go in the user turn.
+    `scriptFrom` joins lines in a row from one side, keeps notes on rep lines only, puts
+    her opening line first if it is missing, and refuses a call under 8 lines.
+  - A failure is never retried automatically: by then the call may have been paid for.
+    It stays failed, with Claude's words, until `POST /api/demos/retry`.
+  - Cost is priced from the usage and stored per demo; the page shows it.
+- **Why it's done this way.** The first version simulated each demo as a live call
+  between two Claudes (the prospect engine and a judge on every line), then annotated it
+  and voiced it with Cartesia: about $0.60–0.80 a demo. A Cartesia voice list without
+  `locales` then crashed every attempt at the voicing step, after the Claude work was
+  paid for, and each demo was retried three times.
+- Migration 0007 dropped the audio and mood columns. `web/src/demos/DemoPage.tsx`
+  shows the transcript; there is no audio route.
 
 ## The live coach and the controls (M5)
 

@@ -1,25 +1,23 @@
-// Demo calls in Postgres: a batch is queued here, the agent claims them one at
-// a time and posts each finished call back, and the web lists and plays them.
+// Demo calls in Postgres: a batch is queued here, the API's DemoQueue claims
+// and writes them a few at a time, and the web lists and reads them.
 import { randomUUID } from 'node:crypto';
-import {
-  type DemoDetail,
-  type DemoJob,
-  type DemoResultRequest,
-  type DemoStatus,
-  type DemoSummary,
-  ScenarioSpec,
-} from '@ccc/contracts';
-import { demoDurationMs, demoPlan } from '@ccc/core';
-import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { type DemoDetail, type DemoSummary, ScenarioSpec } from '@ccc/contracts';
+import { demoPlan } from '@ccc/core';
+import { asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.ts';
 import { demoTurns, demos, scenarios } from '../db/schema.ts';
+import type { WrittenDemo } from './writer.ts';
 
-/** How long a claim holds a demo before another claim may take it over. */
-export const CLAIM_LEASE_MINUTES = 15;
-/** A demo that fails this many times stays failed until the rep retries it. */
-export const MAX_ATTEMPTS = 3;
+/** A demo a restart interrupted goes back in the queue this many times at most. */
+export const MAX_ATTEMPTS = 2;
 
-const GAVE_UP = `The agent stopped answering while writing this demo, ${MAX_ATTEMPTS} times.`;
+const INTERRUPTED = 'The API restarted while writing this demo. Retry it.';
+
+export interface DemoJob {
+  id: string;
+  scenarioId: string;
+  angle: string;
+}
 
 /** Queues `count` demos across the given prospects, as one batch. Returns how many. */
 export async function queueDemos(
@@ -50,23 +48,14 @@ export async function demosInProgress(db: Db): Promise<number> {
   return row?.n ?? 0;
 }
 
-/**
- * Claims the next demo to write: the oldest queued, or one whose claim is older
- * than the lease (its agent died mid-demo). One that has run out of attempts is
- * marked failed instead.
- */
+/** Claims the oldest queued demo for writing, or null when none is waiting. */
 export async function claimDemo(db: Db): Promise<DemoJob | null> {
-  const stale = sql`${demos.status} = 'generating' AND ${demos.claimedAt} < now() - make_interval(mins => ${CLAIM_LEASE_MINUTES})`;
-  await db
-    .update(demos)
-    .set({ status: 'failed', error: GAVE_UP, updatedAt: sql`now()` })
-    .where(and(stale, sql`${demos.attempts} >= ${MAX_ATTEMPTS}`));
   const claimed = await db.execute<{ id: string; scenario_id: string; angle: string }>(sql`
     UPDATE demos
        SET status = 'generating', claimed_at = now(), attempts = attempts + 1, updated_at = now()
      WHERE id = (
        SELECT id FROM demos
-        WHERE status = 'queued' OR (${stale})
+        WHERE status = 'queued'
         ORDER BY created_at, position
         LIMIT 1
         FOR UPDATE SKIP LOCKED
@@ -76,22 +65,26 @@ export async function claimDemo(db: Db): Promise<DemoJob | null> {
   return row ? { id: row.id, scenarioId: row.scenario_id, angle: row.angle } : null;
 }
 
-/** Stores a finished demo, lines and audio, replacing any earlier try. False if there is no such demo. */
-export async function saveDemo(db: Db, id: string, result: DemoResultRequest): Promise<boolean> {
+/** Stores a written demo and its lines, replacing any earlier try. False if there is no such demo. */
+export async function saveDemo(
+  db: Db,
+  id: string,
+  demo: WrittenDemo & { scenarioVersion: number },
+): Promise<boolean> {
   return db.transaction(async (tx) => {
     const updated = await tx
       .update(demos)
       .set({
         status: 'ready',
+        claimedAt: null,
         error: null,
-        scenarioVersion: result.scenarioVersion,
-        title: result.title,
-        summary: result.summary,
-        lessons: result.lessons,
-        outcome: result.outcome,
-        outcomeDetail: result.outcomeDetail,
-        durationMs: demoDurationMs(result.turns.map((t) => t.audioMs)),
-        costUsd: result.costUsd,
+        scenarioVersion: demo.scenarioVersion,
+        title: demo.title,
+        summary: demo.summary,
+        lessons: demo.lessons,
+        outcome: 'meeting_booked',
+        outcomeDetail: demo.meeting,
+        costUsd: demo.costUsd,
         updatedAt: sql`now()`,
       })
       .where(eq(demos.id, id))
@@ -99,17 +92,13 @@ export async function saveDemo(db: Db, id: string, result: DemoResultRequest): P
     if (!updated.length) return false;
     await tx.delete(demoTurns).where(eq(demoTurns.demoId, id));
     await tx.insert(demoTurns).values(
-      result.turns.map((turn) => ({
+      demo.lines.map((line, idx) => ({
         demoId: id,
-        idx: turn.idx,
-        speaker: turn.speaker,
-        text: turn.text,
-        technique: turn.technique,
-        note: turn.note,
-        interest: turn.interest,
-        patience: turn.patience,
-        audio: turn.audio === null ? null : Buffer.from(turn.audio, 'base64'),
-        audioMs: turn.audio === null ? null : turn.audioMs,
+        idx,
+        speaker: line.speaker,
+        text: line.text,
+        technique: line.technique,
+        note: line.note,
       })),
     );
     return true;
@@ -117,22 +106,34 @@ export async function saveDemo(db: Db, id: string, result: DemoResultRequest): P
 }
 
 /**
- * The agent couldn't write a demo. It goes back in the queue for another try,
- * or, once it has had MAX_ATTEMPTS, stays failed with the reason. Null if
- * there is no such demo.
+ * The demo couldn't be written. It stays failed, with the reason, until the rep
+ * retries it: a failure after Claude answered has already been paid for, so it
+ * is never retried automatically.
  */
-export async function failDemo(db: Db, id: string, error: string): Promise<DemoStatus | null> {
-  const [row] = await db
+export async function failDemo(db: Db, id: string, error: string): Promise<void> {
+  await db
+    .update(demos)
+    .set({ status: 'failed', claimedAt: null, error, updatedAt: sql`now()` })
+    .where(eq(demos.id, id));
+}
+
+/**
+ * At boot: demos a restart left half-written go back in the queue, unless a
+ * restart has already interrupted them MAX_ATTEMPTS times. Returns how many
+ * went back.
+ */
+export async function requeueInterrupted(db: Db): Promise<number> {
+  const rows = await db
     .update(demos)
     .set({
       status: sql`CASE WHEN ${demos.attempts} >= ${MAX_ATTEMPTS} THEN 'failed' ELSE 'queued' END`,
+      error: sql`CASE WHEN ${demos.attempts} >= ${MAX_ATTEMPTS} THEN ${INTERRUPTED} ELSE NULL END`,
       claimedAt: null,
-      error,
       updatedAt: sql`now()`,
     })
-    .where(eq(demos.id, id))
+    .where(eq(demos.status, 'generating'))
     .returning({ status: demos.status });
-  return row?.status ?? null;
+  return rows.filter((r) => r.status === 'queued').length;
 }
 
 /** Puts every failed demo back in the queue with fresh attempts. Returns how many. */
@@ -175,7 +176,6 @@ const summaryOf = (row: DemoRow, prospect: DemoSummary['prospect']): DemoSummary
   title: row.title,
   prospect,
   outcome: row.outcome,
-  durationMs: row.durationMs,
   error: row.error,
   createdAt: row.createdAt.toISOString(),
 });
@@ -190,7 +190,7 @@ export async function listDemos(db: Db): Promise<DemoSummary[]> {
   return rows.map((row) => summaryOf(row, prospect(row)));
 }
 
-/** One demo with its lines (audio left out: each line's is fetched on its own), or null. */
+/** One demo with its lines, or null. */
 export async function demoDetail(db: Db, id: string): Promise<DemoDetail | null> {
   const [row] = await db.select().from(demos).where(eq(demos.id, id));
   if (!row) return null;
@@ -202,9 +202,6 @@ export async function demoDetail(db: Db, id: string): Promise<DemoDetail | null>
       text: demoTurns.text,
       technique: demoTurns.technique,
       note: demoTurns.note,
-      interest: demoTurns.interest,
-      patience: demoTurns.patience,
-      audioMs: demoTurns.audioMs,
     })
     .from(demoTurns)
     .where(eq(demoTurns.demoId, id))
@@ -217,13 +214,4 @@ export async function demoDetail(db: Db, id: string): Promise<DemoDetail | null>
     turns,
     costUsd: row.costUsd,
   };
-}
-
-/** One line's MP3, or null if the demo, the line or its audio doesn't exist. */
-export async function demoAudio(db: Db, id: string, idx: number): Promise<Buffer | null> {
-  const [row] = await db
-    .select({ audio: demoTurns.audio })
-    .from(demoTurns)
-    .where(and(eq(demoTurns.demoId, id), eq(demoTurns.idx, idx), isNotNull(demoTurns.audio)));
-  return row?.audio ?? null;
 }

@@ -56,6 +56,8 @@ const sync = async (): Promise<void> => {
     );
     const resumed = await app.reviewQueue.resumeUnfinished();
     if (resumed) app.log.info({ resumed }, 'resumed unfinished reviews');
+    const demos = await app.demoQueue.resumeUnfinished();
+    if (demos) app.log.info({ demos }, 'resumed demo calls a restart interrupted');
   } catch (error) {
     app.log.error(
       { err: error },
