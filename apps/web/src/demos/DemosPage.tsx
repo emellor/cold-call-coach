@@ -1,12 +1,12 @@
-// Demo calls: an expert rep calls the prospects, a different approach each
-// time, and the trainee listens along with the technique behind every line.
-// Generating them spends money, so the button says how much first.
+// Demo calls: model cold calls to read. An expert rep calls the prospects, a
+// different approach each time, and every line the rep says carries the
+// technique behind it. Generating them spends money, so the button says how
+// much first.
 import { type DemoSummary, MAX_DEMO_BATCH } from '@ccc/contracts';
 import { useState } from 'react';
 import { Link } from 'wouter';
 import { AppHeader } from '../components/AppHeader.tsx';
 import { generateDemos, retryDemos } from '../lib/api.ts';
-import { duration } from '../review/format.ts';
 import { DIFFICULTY_STYLE, GENERATE_CONFIRM, OUTCOME_CHIP, STATUS_CHIP } from './labels.ts';
 import { useDemos, writing } from './useDemos.ts';
 
@@ -41,9 +41,7 @@ function DemoCard({ demo }: { demo: DemoSummary }) {
       {demo.status === 'failed' && demo.error && (
         <p className="mt-2 line-clamp-3 text-sm text-rose-300">{demo.error}</p>
       )}
-      {demo.durationMs !== null && (
-        <p className="mt-2 text-xs text-slate-500">{duration(demo.durationMs)}</p>
-      )}
+      {demo.status === 'ready' && <p className="mt-2 text-xs text-sky-300">Read the call →</p>}
     </>
   );
   const card = 'block h-full rounded-xl border border-slate-800 bg-slate-900/60 p-4';
@@ -68,18 +66,16 @@ function Progress({ demos }: { demos: readonly DemoSummary[] }) {
   const newest = demos[0]?.createdAt;
   const batch = demos.filter((d) => d.createdAt === newest);
   const ready = batch.filter((d) => d.status === 'ready').length;
-  const now = batch.find((d) => d.status === 'generating');
+  const now = batch.filter((d) => d.status === 'generating').length;
   return (
     <section
       aria-label="Progress"
       className="rounded-xl border border-sky-800 bg-sky-950/40 p-4 text-sm text-sky-100"
     >
       <p role="status">
-        {ready} of {batch.length} demo calls ready.
-        {now
-          ? ` Writing #${now.position} now.`
-          : ' Waiting for the voice agent to pick them up.'}{' '}
-        You can leave this page: they carry on in the background.
+        {ready} of {batch.length} demo calls written.
+        {now ? ` Claude is writing ${now} now.` : ' Starting…'} You can leave this page: they carry
+        on in the background.
       </p>
       <div
         role="progressbar"
@@ -127,9 +123,9 @@ export function DemosPage() {
           <div className="max-w-2xl">
             <h2 className="text-xl font-semibold">Demo calls</h2>
             <p className="mt-1 text-sm text-slate-300">
-              An expert rep calls your prospects, taking a different approach each time. Play one
-              and follow along: every line the rep says comes with the technique behind it and why
-              it works at that point of the call.
+              Model cold calls to read: an expert rep calls your prospects, taking a different
+              approach each time. Open one to read the whole call, with the technique behind every
+              line the rep says and why it works at that point.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -170,7 +166,7 @@ export function DemosPage() {
         {inProgress && <Progress demos={demos} />}
         {state.status === 'ready' && demos.length === 0 && (
           <p className="text-slate-400">
-            No demo calls yet. Generate some, and the voice agent writes them in the background.
+            No demo calls yet. Generate some, and Claude writes them in the background.
           </p>
         )}
         {demos.length > 0 && (

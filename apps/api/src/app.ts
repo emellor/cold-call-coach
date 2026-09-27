@@ -7,6 +7,8 @@ import { ZodError } from 'zod';
 import { registerAuth } from './auth.ts';
 import { type Config, liveKitConfig } from './config.ts';
 import type { Db } from './db/client.ts';
+import { DemoQueue } from './demos/queue.ts';
+import { type DemoWriter, claudeDemoWriter } from './demos/writer.ts';
 import {
   LIVEKIT_REJECTED,
   LiveKitCheck,
@@ -43,6 +45,12 @@ export interface AppDeps {
    * ANTHROPIC_API_KEY. Tests pass a stub.
    */
   prospectWriter?: ProspectWriter | null;
+  /**
+   * Writes demo calls. Omitted: Claude on REVIEW_MODEL, or none without
+   * ANTHROPIC_API_KEY (generating them is then refused, saying why). Tests
+   * pass a stub.
+   */
+  demoWriter?: DemoWriter | null;
   /** Omitted: read from config/prices.json. */
   prices?: PriceTable;
   /**
@@ -53,13 +61,17 @@ export interface AppDeps {
 }
 
 /** What the routes get: the deps with the price table resolved. */
-export type AppContext = Omit<AppDeps, 'prices' | 'livekitCheck' | 'prospectWriter'> & {
+export type AppContext = Omit<
+  AppDeps,
+  'prices' | 'livekitCheck' | 'prospectWriter' | 'demoWriter'
+> & {
   prices: PriceTable;
 };
 
 declare module 'fastify' {
   interface FastifyInstance {
     reviewQueue: ReviewQueue;
+    demoQueue: DemoQueue;
   }
 }
 
@@ -90,6 +102,23 @@ function defaultProspectWriter(
     voices: config.CARTESIA_API_KEY
       ? cartesiaVoiceLibrary({ apiKey: config.CARTESIA_API_KEY })
       : null,
+    prices,
+    logger,
+  });
+}
+
+function defaultDemoWriter(
+  deps: AppDeps,
+  prices: PriceTable,
+  logger: FastifyInstance['log'],
+): DemoWriter | null {
+  const { config } = deps;
+  if (!config.ANTHROPIC_API_KEY) return null;
+  return claudeDemoWriter({
+    messages: claudeFor(config.ANTHROPIC_API_KEY, config).beta.messages,
+    model: config.REVIEW_MODEL,
+    product: deps.catalog.product,
+    rubrics: deps.catalog.rubrics,
     prices,
     logger,
   });
@@ -137,6 +166,15 @@ export async function buildApp(
     deps.reviewer === undefined ? defaultReviewer(deps.config, context.prices) : deps.reviewer;
   const queue = new ReviewQueue({ db: deps.db, catalog: deps.catalog, reviewer, logger: app.log });
   app.decorate('reviewQueue', queue);
+  const demoQueue = new DemoQueue({
+    db: deps.db,
+    writer:
+      deps.demoWriter === undefined
+        ? defaultDemoWriter(deps, context.prices, app.log)
+        : deps.demoWriter,
+    logger: app.log,
+  });
+  app.decorate('demoQueue', demoQueue);
 
   registerAuth(app, deps.config);
   registerHealthRoutes(app, {
@@ -155,7 +193,7 @@ export async function buildApp(
   );
   registerCallRoutes(app, context, queue);
   registerCallLogRoutes(app, context, queue);
-  registerDemoRoutes(app, context);
+  registerDemoRoutes(app, context, demoQueue);
   await registerWeb(app, options.webDistDir ?? webDistDir);
 
   return app;

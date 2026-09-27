@@ -174,28 +174,21 @@ one, the page says so, and **Try again** reruns the review once the key is set.
 
 ## Demo calls
 
-**Demos** has calls to listen to: an expert rep, played by Claude, calls your prospects
-and books the meeting, taking a different approach each time. Examples: a compliance
-deadline, a peer story, an upfront agreement, straight talk about it being a cold call.
-Every line the rep says comes with the technique behind it and why it works at that
-point, and each call has a summary and the patterns to copy. Press **Play the call**
-and follow along: the line playing is highlighted, and **Play from here** starts
-anywhere.
+**Demos** has model calls to read: an expert rep calls your prospects and books the
+meeting, taking a different approach each time. Examples: a compliance deadline, a peer
+story, an upfront agreement, straight talk about it being a cold call. Open one to read
+the whole call. Every line the rep says comes with the technique behind it and why it
+works at that point, and each call has a summary and the patterns to copy.
 
 **Generate 20 demo calls** queues a batch across the prospects in the picker, yours
-included. The voice agent writes them in the background, one at a time:
+included. The API has Claude write each one in a single request: the rep's approach,
+her profile and what she's hiding go in, and the whole call comes back with the notes.
+Claude writes three at a time, so a batch takes about ten minutes. Each costs about
+10 cents on `REVIEW_MODEL` (about $2 for 20), and the page shows what each one cost.
 
-1. The expert rep calls her through the same prompt, judge and state engine as a real
-   call, so she pushes back and hangs up as she would on you. If she hangs up, it has
-   one more try.
-2. Claude notes every rep line.
-3. Cartesia voices both sides.
-
-Each takes two or three minutes and costs about $0.60–0.80 in Claude and Cartesia usage,
-so a batch of 20 comes to $12–16. The page asks before it starts, shows progress, and
-**Retry** requeues any that failed. The agent writes them only while it's running;
-`DEMO_WORKER=off` stops it. `DEMO_MODEL` plays the rep, and `DEMO_REP_VOICE_ID` sets its
-voice, which otherwise is the first British man in Cartesia's library.
+A demo is written once and kept. One that fails isn't tried again by itself, since the
+attempt may already have been paid for: **Retry** writes the failed ones again. Reading a
+demo before you call that prospect gives away what she's hiding.
 
 ## Cost per call
 

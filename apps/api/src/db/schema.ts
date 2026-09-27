@@ -15,14 +15,12 @@ import type {
 import {
   bigint,
   boolean,
-  customType,
   index,
   integer,
   jsonb,
   numeric,
   pgTable,
   primaryKey,
-  real,
   text,
   timestamp,
   uuid,
@@ -137,9 +135,6 @@ export const scenarios = pgTable(
   (t) => [primaryKey({ columns: [t.id, t.version] })],
 );
 
-/** Postgres `bytea`, which node-postgres reads as a Buffer. */
-const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => 'bytea' });
-
 export const demos = pgTable(
   'demos',
   {
@@ -158,7 +153,6 @@ export const demos = pgTable(
     lessons: jsonb('lessons').$type<string[]>(),
     outcome: text('outcome').$type<DemoOutcome>(),
     outcomeDetail: text('outcome_detail'),
-    durationMs: integer('duration_ms'),
     costUsd: usd('cost_usd'),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
     updatedAt: timestamptz('updated_at').notNull().defaultNow(),
@@ -177,10 +171,6 @@ export const demoTurns = pgTable(
     text: text('text').notNull(),
     technique: text('technique'),
     note: text('note'),
-    interest: real('interest'),
-    patience: real('patience'),
-    audio: bytea('audio'),
-    audioMs: integer('audio_ms'),
   },
   (t) => [primaryKey({ columns: [t.demoId, t.idx] })],
 );

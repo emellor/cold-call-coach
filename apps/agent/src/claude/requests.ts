@@ -2,10 +2,9 @@ import type {
   BetaMessageParam,
   BetaMessageStreamParams,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages';
-import { DemoNotesDraft, HintDraft, JudgeResult } from '@ccc/contracts';
+import { HintDraft, JudgeResult } from '@ccc/contracts';
 import {
   type ChatTurn,
-  DEMO_NOTES_MAX_TOKENS,
   type Effort,
   HINT_MAX_TOKENS,
   SERVER_FALLBACK_BETA,
@@ -23,7 +22,6 @@ export const JUDGE_MAX_TOKENS = 2048;
 /** Built once: an unchanged schema is compiled once by the API and then cached. */
 const JUDGE_FORMAT = structuredFormat(JudgeResult);
 const HINT_FORMAT = structuredFormat(HintDraft);
-const DEMO_NOTES_FORMAT = structuredFormat(DemoNotesDraft);
 
 /** Effort and server-side refusal fallbacks, for the models that accept them (Haiku 4.5 takes neither). */
 function modelOptions(model: string, effort: Effort) {
@@ -123,24 +121,6 @@ export function hintRequest(input: {
     ],
     messages: [{ role: 'user' as const, content: input.user }],
     output_config: { ...options.effort, format: HINT_FORMAT },
-    ...options.fallbacks,
-  };
-}
-
-/** A demo call's notes (demos/write.ts): structured output, parsed by `messages.parse`. */
-export function demoNotesRequest(input: {
-  model: string;
-  effort: Effort;
-  system: string;
-  user: string;
-}) {
-  const options = modelOptions(input.model, input.effort);
-  return {
-    model: input.model,
-    max_tokens: DEMO_NOTES_MAX_TOKENS,
-    system: input.system,
-    messages: [{ role: 'user' as const, content: input.user }],
-    output_config: { ...options.effort, format: DEMO_NOTES_FORMAT },
     ...options.fallbacks,
   };
 }

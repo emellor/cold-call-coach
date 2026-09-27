@@ -9,7 +9,6 @@ import {
   readWorkerConfig,
   turnDetectorKind,
 } from './config.ts';
-import { startDemos } from './demos/start.ts';
 import { runCall } from './runCall.ts';
 
 interface ProcessData {
@@ -50,14 +49,6 @@ if (isMain) {
   const call = readCallConfig(process.env);
   if (call.ok) console.log('[agent] Call settings are complete.');
   else console.warn(`[agent] ${describeMissingCallConfig(call.problems)}`);
-
-  // Demo calls are written here, in the main process, between LiveKit's jobs.
-  if (call.ok && call.config.DEMO_WORKER === 'on') {
-    startDemos(call.config).then(
-      () => console.log('[agent] Writing demo calls whenever the API queues them.'),
-      (error: unknown) => console.warn('[agent] The demo worker did not start:', error),
-    );
-  }
 
   if (turnDetectorKind(process.env) === 'multilingual') {
     // The plan's text-based turn detector registers an inference runner when its

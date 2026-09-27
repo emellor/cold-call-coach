@@ -110,7 +110,7 @@ export function fetchDemo(id: string, signal?: AbortSignal): Promise<DemoDetail>
   return request(DemoDetail, `/api/demos/${encodeURIComponent(id)}`, { signal });
 }
 
-/** `POST /api/demos/generate`: queues a batch for the voice agent to write. */
+/** `POST /api/demos/generate`: queues a batch for Claude to write. */
 export function generateDemos(count: number): Promise<GenerateDemosResponse> {
   return request(GenerateDemosResponse, '/api/demos/generate', {
     method: 'POST',
@@ -122,11 +122,6 @@ export function generateDemos(count: number): Promise<GenerateDemosResponse> {
 export function retryDemos(): Promise<GenerateDemosResponse> {
   return request(GenerateDemosResponse, '/api/demos/retry', { method: 'POST' });
 }
-
-/** Where a demo line's MP3 is served. */
-export const demoAudioUrl = (id: string, idx: number): string =>
-  `/api/demos/${encodeURIComponent(id)}/turns/${idx}/audio`;
-
 /** `GET /api/calls`: the call history, newest first. */
 export function fetchCalls(signal?: AbortSignal): Promise<CallListResponse> {
   return request(CallListResponse, '/api/calls', { signal });

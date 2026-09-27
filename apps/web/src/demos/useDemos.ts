@@ -2,7 +2,7 @@ import type { DemoSummary } from '@ccc/contracts';
 import { useCallback, useEffect, useState } from 'react';
 import { fetchDemos } from '../lib/api.ts';
 
-/** How often the list is checked while the agent is writing demos. */
+/** How often the list is checked while demos are being written. */
 export const DEMOS_POLL_MS = 5_000;
 
 export type DemosState =

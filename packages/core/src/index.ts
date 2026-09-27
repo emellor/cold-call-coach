@@ -11,7 +11,7 @@ export * from './coach/stages.ts';
 export * from './coach/talkClock.ts';
 export * from './coach/tipGate.ts';
 export * from './cost/cost.ts';
-export * from './demos/notes.ts';
+export * from './demos/script.ts';
 export * from './demos/plan.ts';
 export * from './judge/prompt.ts';
 export * from './livekit/credentials.ts';
