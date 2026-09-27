@@ -40,7 +40,7 @@ function mockApi(routes: Record<string, () => Response>) {
 }
 
 const healthy = () => json(200, { ok: true, db: { ok: true, latencyMs: 3 } });
-const stage = () => within(screen.getByRole('region', { name: 'Prospect video' }));
+const stage = () => within(screen.getByRole('region', { name: 'Prospect' }));
 
 describe('App', () => {
   beforeEach(() => window.localStorage.clear());
@@ -92,11 +92,12 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Dial' })).toBeDisabled();
   });
 
-  it('falls back to a voice-only call when the 3D avatar cannot run', async () => {
-    // jsdom has no Web Audio worklets or WebGL, like a browser that can't run the avatar.
+  it('shows who you are calling, by initials and name, with no avatar settings', async () => {
     mockApi({ '/api/health': healthy, '/api/scenarios': () => json(200, SCENARIOS) });
     render(<App />);
-    expect(await screen.findByText(/calls are voice only/)).toBeInTheDocument();
+    expect(await stage().findByText('Priya Shah')).toBeInTheDocument();
+    expect(stage().getByText('PS')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Phone mode|lip sync/ })).toBeNull();
     expect(await screen.findByRole('button', { name: 'Dial' })).toBeEnabled();
   });
 

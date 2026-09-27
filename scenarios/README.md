@@ -17,7 +17,6 @@ keyed by `(id, version)`.
     opening line, the private `hidden` facts (pains, current solution, decision process,
     timing) and the `objections` she raises.
   - `voice`: the Cartesia voice id and speed.
-  - `avatar`: the model URL and body (`"F"`).
   - `state`: the hidden-state starting values and thresholds (`interest`, `patience`,
     `patienceDecayPerTurn`, `hangUpAt`, `meetingAt`).
   - `winCondition` and the `rubricId` the call is scored with.
@@ -31,5 +30,5 @@ keyed by `(id, version)`.
   against, so old reviews stay explainable.
 - **Hidden pains should connect to the product's value**, so good discovery questions can
   uncover them.
-- **All v1 prospects are women**: the sample avatar has a female body (`"body": "F"`).
-  Pick female Cartesia voices to match.
+- **All v1 prospects are women**: their prompts are written that way. Pick female Cartesia
+  voices to match.

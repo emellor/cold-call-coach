@@ -39,7 +39,6 @@ export const scenario: ScenarioSpec = ScenarioSpec.parse({
     ],
   },
   voice: { provider: 'cartesia', voiceId: 'voice-123', speed: 'normal' },
-  avatar: { url: '/avatars/mpfb.glb', body: 'F' },
   state: { interest: 20, patience: 55, patienceDecayPerTurn: 3, hangUpAt: 0, meetingAt: 65 },
   winCondition: 'Agrees to a 20-minute call at a specific day and time',
   rubricId: 'cold-call-v1',

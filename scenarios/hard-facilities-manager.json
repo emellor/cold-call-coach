@@ -34,7 +34,6 @@
     "speed": "normal",
     "hint": "Flat, tired-sounding British woman in her fifties; a North West English accent if available"
   },
-  "avatar": { "url": "/avatars/mpfb.glb", "body": "F" },
   "state": {
     "interest": 10,
     "patience": 35,
