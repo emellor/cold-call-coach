@@ -49,7 +49,6 @@ left like that.
 ```bash
 pnpm install
 cp .env.example .env        # then fill in the keys (and a voice: see Scenarios)
-pnpm avatar:fetch           # once: the 3D avatar (~37 MB, CC0; see CREDITS.md)
 pnpm --filter @ccc/agent download-files   # once: the turn detector's model
 docker compose up -d        # Postgres on :5432
 pnpm db:migrate
@@ -57,11 +56,8 @@ pnpm dev                    # API on :3000, web on http://localhost:5173, agent 
 ```
 
 Open http://localhost:5173, pick who to call, put your headset on and press **Dial**. It
-rings for a few seconds, she picks up on camera, and you talk. Her lips follow her voice, she
-looks at you and nods while you speak, and **Phone mode** hides her (real cold calls have
-no face) without changing how her voice reaches you. If her lips trail her voice, tick
-**Delay voice 0.1 s**. The transcript shows both sides, and the
-latency panel shows each reply's end-of-turn, LLM, TTS and end-to-end times with a
+rings for a few seconds, she picks up, and you talk: a voice call, as real cold calls
+are. The transcript shows both sides, and the latency panel shows each reply's end-of-turn, LLM, TTS and end-to-end times with a
 running p50. The header shows whether the API and database are healthy
 (`GET /api/health` returns the same).
 
@@ -238,7 +234,6 @@ service, the agent as a background worker, and Postgres. LiveKit Cloud stays as 
    worker, and the database is wired in.
 3. Apply. Each deploy:
    - installs with the pnpm version `package.json` pins;
-   - fetches the avatar;
    - builds the SPA;
    - runs the migrations (`preDeployCommand`);
    - starts the service, with `/api/health` as its health check.
@@ -272,8 +267,7 @@ commands were run locally in production mode, against a local LiveKit server.
 | Symptom                                                                                  | What to do                                                                                                                                                                                                                                                                   |
 | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | She talks over herself, or answers her own words                                         | Echo: her voice is reaching your microphone from your speakers. Use a headset.                                                                                                                                                                                               |
-| No 3D avatar, and the page says "The avatar didn't load"                                 | Run `pnpm avatar:fetch` and reload. Calls work without it, and on Render the build fetches it.                                                                                                                                                                               |
-| You can't hear her                                                                       | Click the page or press a key: browsers start audio only once you interact, and during a call every click retries it. Check the tab isn't muted and the site may play sound.                                                                                                 |
+| You can't hear her                                                                       | Press **Click to allow audio** if it appears: browsers only play sound once you have interacted with the page. Check the tab isn't muted and the site may play sound.                                                                                                        |
 | Her replies are slow                                                                     | Open the latency panel to see which stage is slow, then see [Latency](#latency).                                                                                                                                                                                             |
 | The call ends as soon as it starts ringing, or the header says LiveKit rejected the keys | `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` must be a key and its secret from the LiveKit project in `LIVEKIT_URL`, on the API and the agent alike. LiveKit shows a secret once, when the key is created, so create a new key and copy both values.                           |
 | The call ends: "The voice agent's own settings are incomplete: … is not set"             | The agent reads its own environment. On Render it is its own service (`cold-call-coach-agent`), so set the named variables there too (`INTERNAL_API_SECRET` must match the web service's), then save and deploy. The agent's log lists anything missing each time it starts. |
@@ -295,12 +289,12 @@ CI runs the same against a Postgres 16 service on every pull request and push to
 
 ## Layout
 
-| Path                 | What                                                              |
-| -------------------- | ----------------------------------------------------------------- |
-| `apps/web`           | Vite + React SPA: dialler, avatar, live coach, review and history |
-| `apps/api`           | Fastify + Drizzle + Postgres; serves the SPA in production        |
-| `apps/agent`         | LiveKit Agents worker (`agentName: "prospect"`)                   |
-| `packages/contracts` | zod schemas and types for every wire payload                      |
-| `packages/core`      | Pure logic: metrics, state engine, prompt builders, validators    |
-| `scenarios`          | Product, scenario and rubric JSON                                 |
-| `docs`               | The build plan and milestone prompts                              |
+| Path                 | What                                                           |
+| -------------------- | -------------------------------------------------------------- |
+| `apps/web`           | Vite + React SPA: dialler, live coach, review and history      |
+| `apps/api`           | Fastify + Drizzle + Postgres; serves the SPA in production     |
+| `apps/agent`         | LiveKit Agents worker (`agentName: "prospect"`)                |
+| `packages/contracts` | zod schemas and types for every wire payload                   |
+| `packages/core`      | Pure logic: metrics, state engine, prompt builders, validators |
+| `scenarios`          | Product, scenario and rubric JSON                              |
+| `docs`               | The build plan and milestone prompts                           |

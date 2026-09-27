@@ -71,7 +71,7 @@ export interface CallView {
   /** Why the call ended, in words for the rep. */
   message?: string;
   latency: DebugLatencyPayload[];
-  /** Her latest mood and hidden numbers (the page shows only the mood). */
+  /** Her latest mood and hidden numbers. The page shows none of them. */
   prospect?: ProspectStatePayload;
   /** Set once a meeting is booked: the slot she agreed to ('' if the agent sent none). */
   meeting?: string;

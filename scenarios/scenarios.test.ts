@@ -63,9 +63,8 @@ describe('scenarios/', () => {
     expect(result.error?.issues).toBeUndefined();
   });
 
-  it('keeps the v1 casting: three women, one per difficulty, hard the least patient', () => {
+  it('keeps the v1 casting: one per difficulty, hard the least patient', () => {
     const scenarios = scenarioFiles.map((f) => ScenarioSpec.parse(readJson(join(scenariosDir, f))));
-    expect(scenarios.map((s) => s.avatar.body)).toEqual(['F', 'F', 'F']);
     const by = Object.fromEntries(scenarios.map((s) => [s.difficulty, s]));
     expect(Object.keys(by).sort()).toEqual(['easy', 'hard', 'medium']);
     expect(by.hard!.state.patience).toBeLessThan(by.medium!.state.patience);

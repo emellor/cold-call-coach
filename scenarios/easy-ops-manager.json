@@ -33,7 +33,6 @@
     "speed": "normal",
     "hint": "Warm, friendly British woman in her thirties; a Yorkshire accent if the library has one"
   },
-  "avatar": { "url": "/avatars/mpfb.glb", "body": "F" },
   "state": {
     "interest": 35,
     "patience": 75,
