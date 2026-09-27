@@ -85,7 +85,7 @@ describe('chooseVoice', () => {
     expect(chooseVoice(placeholder, undefined)).toEqual({
       ok: false,
       problem:
-        'Claire Hughes has no voice yet: set voice.voiceId in scenarios/medium-finance-director.json, or CARTESIA_VOICE_ID in .env',
+        'Claire Hughes has no voice yet: set CARTESIA_VOICE_ID for the agent, or voice.voiceId in scenarios/medium-finance-director.json if she is one of the shipped scenarios',
     });
   });
 });

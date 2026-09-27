@@ -1,5 +1,5 @@
 import type { ScenarioSummary } from '@ccc/contracts';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { fetchScenarios } from '../lib/api.ts';
 
 export type ScenariosState =
@@ -7,19 +7,30 @@ export type ScenariosState =
   | { status: 'error'; message: string }
   | { status: 'ready'; scenarios: ScenarioSummary[] };
 
-/** The scenario list, fetched once when the page opens. */
-export function useScenarios(): ScenariosState {
+/** The list, or why it couldn't be had. */
+const fetchState = (signal?: AbortSignal): Promise<ScenariosState> =>
+  fetchScenarios(signal).then(
+    ({ scenarios }) => ({ status: 'ready', scenarios }),
+    (error: unknown) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      return { status: 'error', message: `Couldn't load the scenarios: ${detail}` };
+    },
+  );
+
+/**
+ * The scenario list, fetched when the page opens. `reload` fetches it again
+ * (after "Add new", say), keeping the current list on screen until the new one
+ * is in, and resolves once it is.
+ */
+export function useScenarios(): ScenariosState & { reload: () => Promise<void> } {
   const [state, setState] = useState<ScenariosState>({ status: 'loading' });
   useEffect(() => {
     const abort = new AbortController();
-    fetchScenarios(abort.signal)
-      .then(({ scenarios }) => setState({ status: 'ready', scenarios }))
-      .catch((error: unknown) => {
-        if (abort.signal.aborted) return;
-        const detail = error instanceof Error ? error.message : String(error);
-        setState({ status: 'error', message: `Couldn't load the scenarios: ${detail}` });
-      });
+    void fetchState(abort.signal).then((next) => {
+      if (!abort.signal.aborted) setState(next);
+    });
     return () => abort.abort();
   }, []);
-  return state;
+  const reload = useCallback(async () => setState(await fetchState()), []);
+  return { ...state, reload };
 }

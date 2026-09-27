@@ -15,6 +15,8 @@ import {
 } from './livekitCheck.ts';
 import { webDistDir } from './paths.ts';
 import { readPriceTable } from './prices.ts';
+import { cartesiaVoiceLibrary } from './prospects/voices.ts';
+import { type ProspectWriter, claudeProspectWriter } from './prospects/writer.ts';
 import { ReviewQueue } from './review/queue.ts';
 import { type Reviewer, claudeReviewer } from './review/reviewer.ts';
 import { registerCallLogRoutes } from './routes/callLog.ts';
@@ -34,6 +36,12 @@ export interface AppDeps {
    * ANTHROPIC_API_KEY (reviews then fail, saying so). Tests pass a stub.
    */
   reviewer?: Reviewer | null;
+  /**
+   * Writes "Add new" prospects. Omitted: Claude on REVIEW_MODEL, with voices
+   * from Cartesia when CARTESIA_API_KEY is set, or none without
+   * ANTHROPIC_API_KEY. Tests pass a stub.
+   */
+  prospectWriter?: ProspectWriter | null;
   /** Omitted: read from config/prices.json. */
   prices?: PriceTable;
   /**
@@ -44,7 +52,9 @@ export interface AppDeps {
 }
 
 /** What the routes get: the deps with the price table resolved. */
-export type AppContext = Omit<AppDeps, 'prices' | 'livekitCheck'> & { prices: PriceTable };
+export type AppContext = Omit<AppDeps, 'prices' | 'livekitCheck' | 'prospectWriter'> & {
+  prices: PriceTable;
+};
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -52,16 +62,35 @@ declare module 'fastify' {
   }
 }
 
+const claudeFor = (apiKey: string, config: Config) =>
+  new Anthropic({ apiKey, defaultHeaders: claudeHeaders(config.ANTHROPIC_WORKSPACE_ID) });
+
 function defaultReviewer(config: Config, prices: PriceTable): Reviewer | null {
   if (!config.ANTHROPIC_API_KEY) return null;
   return claudeReviewer({
-    messages: new Anthropic({
-      apiKey: config.ANTHROPIC_API_KEY,
-      defaultHeaders: claudeHeaders(config.ANTHROPIC_WORKSPACE_ID),
-    }).beta.messages,
+    messages: claudeFor(config.ANTHROPIC_API_KEY, config).beta.messages,
     model: config.REVIEW_MODEL,
     effort: config.REVIEW_EFFORT,
     prices,
+  });
+}
+
+function defaultProspectWriter(
+  deps: AppDeps,
+  prices: PriceTable,
+  logger: FastifyInstance['log'],
+): ProspectWriter | null {
+  const { config } = deps;
+  if (!config.ANTHROPIC_API_KEY) return null;
+  return claudeProspectWriter({
+    messages: claudeFor(config.ANTHROPIC_API_KEY, config).beta.messages,
+    model: config.REVIEW_MODEL,
+    catalog: deps.catalog,
+    voices: config.CARTESIA_API_KEY
+      ? cartesiaVoiceLibrary({ apiKey: config.CARTESIA_API_KEY })
+      : null,
+    prices,
+    logger,
   });
 }
 
@@ -116,7 +145,13 @@ export async function buildApp(
     livekit:
       deps.livekitCheck === undefined ? defaultLiveKitCheck(deps.config, app) : deps.livekitCheck,
   });
-  registerScenarioRoutes(app, context);
+  registerScenarioRoutes(
+    app,
+    context,
+    deps.prospectWriter === undefined
+      ? defaultProspectWriter(deps, context.prices, app.log)
+      : deps.prospectWriter,
+  );
   registerCallRoutes(app, context, queue);
   registerCallLogRoutes(app, context, queue);
   await registerWeb(app, options.webDistDir ?? webDistDir);

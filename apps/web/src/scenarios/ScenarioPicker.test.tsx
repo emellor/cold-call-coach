@@ -11,6 +11,7 @@ const scenarios: ScenarioSummary[] = [
     difficulty: 'easy',
     winCondition: 'Agrees to a 20-minute call',
     prospect: { name: 'Priya Shah', role: 'Operations Manager', company: 'Northgate Bakeries' },
+    custom: false,
   },
   {
     id: 'hard-facilities-manager',
@@ -23,6 +24,16 @@ const scenarios: ScenarioSummary[] = [
       role: 'Head of Facilities',
       company: 'Brightwell Retail Parks',
     },
+    custom: false,
+  },
+  {
+    id: 'rachel-byrne-4f2a9c',
+    version: 1,
+    title: 'Energy broker with an in-house dev team',
+    difficulty: 'hard',
+    winCondition: 'Agrees to a 20-minute call',
+    prospect: { name: 'Rachel Byrne', role: 'Operations Director', company: 'Voltline Energy' },
+    custom: true,
   },
 ];
 
@@ -33,6 +44,7 @@ describe('ScenarioPicker', () => {
         scenarios={scenarios}
         selectedId="easy-ops-manager"
         onSelect={vi.fn()}
+        onAdd={vi.fn()}
         disabled={false}
       />,
     );
@@ -50,6 +62,7 @@ describe('ScenarioPicker', () => {
         scenarios={scenarios}
         selectedId="easy-ops-manager"
         onSelect={onSelect}
+        onAdd={vi.fn()}
         disabled={false}
       />,
     );
@@ -63,9 +76,30 @@ describe('ScenarioPicker', () => {
         scenarios={scenarios}
         selectedId="easy-ops-manager"
         onSelect={vi.fn()}
+        onAdd={vi.fn()}
         disabled
       />,
     );
     for (const radio of screen.getAllByRole('radio')) expect(radio).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Add new/ })).toBeDisabled();
+  });
+
+  it('marks the prospects you added, and offers to add another', () => {
+    const onAdd = vi.fn();
+    render(
+      <ScenarioPicker
+        scenarios={scenarios}
+        selectedId="easy-ops-manager"
+        onSelect={vi.fn()}
+        onAdd={onAdd}
+        disabled={false}
+      />,
+    );
+    expect(screen.getByRole('radio', { name: /Rachel Byrne.*Added by you/ })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Priya Shah/ })).not.toHaveAccessibleName(
+      /Added by you/,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Add new/ }));
+    expect(onAdd).toHaveBeenCalledOnce();
   });
 });

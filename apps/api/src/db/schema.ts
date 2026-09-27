@@ -122,6 +122,13 @@ export const scenarios = pgTable(
     /** A ScenarioSpec as it was when stored; parse it on the way out, the schema may have moved on. */
     spec: jsonb('spec').$type<unknown>().notNull(),
     updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+    /** `file`: upserted from scenarios/. `custom`: written by "Add new". */
+    source: text('source').$type<'file' | 'custom'>().notNull().default('file'),
+    /** A custom prospect's description, in the rep's words. */
+    description: text('description'),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    /** Set when a custom prospect is removed: she leaves the picker, her calls stay. */
+    archivedAt: timestamptz('archived_at'),
   },
   (t) => [primaryKey({ columns: [t.id, t.version] })],
 );

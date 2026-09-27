@@ -4,6 +4,8 @@ import {
   CallListResponse,
   type CreateCallRequest,
   CreateCallResponse,
+  type CreateScenarioRequest,
+  CreateScenarioResponse,
   HealthResponse,
   type LoginRequest,
   ReviewRerunResponse,
@@ -74,6 +76,25 @@ export function createCall(body: CreateCallRequest): Promise<CreateCallResponse>
 /** `GET /api/scenarios`: what the picker offers, easiest first. */
 export function fetchScenarios(signal?: AbortSignal): Promise<ScenarioListResponse> {
   return request(ScenarioListResponse, '/api/scenarios', { signal });
+}
+
+/** `POST /api/scenarios` ("Add new"): Claude writes her from the description; takes 20–40 s. */
+export function createScenario(body: CreateScenarioRequest): Promise<CreateScenarioResponse> {
+  return request(CreateScenarioResponse, '/api/scenarios', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/** `DELETE /api/scenarios/:id`: takes a prospect you added out of the picker. */
+export async function removeScenario(id: string): Promise<void> {
+  const res = await send(`/api/scenarios/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (res.ok) return;
+  const error = ApiError.safeParse(await res.json().catch(() => null));
+  throw new ApiRequestError(
+    res.status,
+    error.success ? error.data.error : `Couldn't remove her (${res.status}).`,
+  );
 }
 
 /** `GET /api/calls`: the call history, newest first. */

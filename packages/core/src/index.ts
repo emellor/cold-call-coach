@@ -19,6 +19,7 @@ export * from './prospect/messages.ts';
 export * from './prospect/note.ts';
 export * from './prospect/stateEngine.ts';
 export * from './prospect/systemPrompt.ts';
+export * from './prospect/writer.ts';
 export * from './report/latency.ts';
 export * from './review/controls.ts';
 export * from './review/prompt.ts';

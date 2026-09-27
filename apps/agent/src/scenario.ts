@@ -56,7 +56,11 @@ export async function fetchScenario(options: {
 
 export type VoiceChoice = { ok: true; voiceId: string } | { ok: false; problem: string };
 
-/** The scenario's own voice, or CARTESIA_VOICE_ID while its file still has the placeholder. */
+/**
+ * The scenario's own voice, or CARTESIA_VOICE_ID while it has the placeholder:
+ * a file not yet given a voice, or a prospect added while the API couldn't
+ * read Cartesia's library.
+ */
 export function chooseVoice(scenario: ScenarioSpec, fallback: string | undefined): VoiceChoice {
   if (scenario.voice.voiceId !== VOICE_ID_PLACEHOLDER) {
     return { ok: true, voiceId: scenario.voice.voiceId };
@@ -64,7 +68,7 @@ export function chooseVoice(scenario: ScenarioSpec, fallback: string | undefined
   if (fallback) return { ok: true, voiceId: fallback };
   return {
     ok: false,
-    problem: `${scenario.prospect.name} has no voice yet: set voice.voiceId in scenarios/${scenario.id}.json, or CARTESIA_VOICE_ID in .env`,
+    problem: `${scenario.prospect.name} has no voice yet: set CARTESIA_VOICE_ID for the agent, or voice.voiceId in scenarios/${scenario.id}.json if she is one of the shipped scenarios`,
   };
 }
 

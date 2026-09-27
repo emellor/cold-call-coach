@@ -11,6 +11,7 @@ const SCENARIOS = {
       difficulty: 'easy',
       winCondition: 'Agrees to a 20-minute call at a specific day and time',
       prospect: { name: 'Priya Shah', role: 'Operations Manager', company: 'Northgate Bakeries' },
+      custom: false,
     },
     {
       id: 'medium-finance-director',
@@ -23,8 +24,19 @@ const SCENARIOS = {
         role: 'Finance Director',
         company: 'Harrow & Finch Logistics',
       },
+      custom: false,
     },
   ],
+};
+
+const RACHEL = {
+  id: 'rachel-byrne-4f2a9c',
+  version: 1,
+  title: 'Energy broker with an in-house dev team',
+  difficulty: 'hard',
+  winCondition: 'Agrees to a 20-minute call at a specific day and time',
+  prospect: { name: 'Rachel Byrne', role: 'Operations Director', company: 'Voltline Energy' },
+  custom: true,
 };
 
 const json = (status: number, body: unknown) =>
@@ -78,6 +90,54 @@ describe('App', () => {
 
     render(<App />);
     expect(await screen.findByRole('radio', { name: /Exam/ })).toBeChecked();
+  });
+
+  it('adds a prospect from a description, picks her, and can remove her again', async () => {
+    let listed = SCENARIOS.scenarios;
+    const sent: Array<[string, string]> = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const method = init?.method ?? 'GET';
+      if (method !== 'GET') sent.push([method, url]);
+      if (url === '/api/health') return Promise.resolve(healthy());
+      if (url === '/api/scenarios' && method === 'POST') {
+        listed = [...SCENARIOS.scenarios, RACHEL];
+        return Promise.resolve(json(201, { scenario: RACHEL, voice: 'default' }));
+      }
+      if (url === '/api/scenarios') return Promise.resolve(json(200, { scenarios: listed }));
+      if (url === `/api/scenarios/${RACHEL.id}` && method === 'DELETE') {
+        listed = SCENARIOS.scenarios;
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      return Promise.resolve(json(404, { error: 'not found' }));
+    });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Add new/ }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Who are you calling?' }), {
+      target: { value: 'A mid-sized energy broker, very tough to sell to.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add her' }));
+
+    expect(await screen.findByRole('radio', { name: /Rachel Byrne/ })).toBeChecked();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(
+      screen.getByText(/^Added Rachel Byrne \(hard\)\. She speaks in the default voice/),
+    ).toHaveAttribute('role', 'status');
+    expect(stage().getByText('Rachel Byrne')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Rachel Byrne' }));
+    expect(confirm).toHaveBeenCalledWith(
+      'Remove Rachel Byrne? Your calls with her stay in History.',
+    );
+    expect(await screen.findByText('Removed Rachel Byrne.')).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /Rachel Byrne/ })).toBeNull();
+    expect(screen.getByRole('radio', { name: /Priya Shah/ })).toBeChecked();
+    expect(sent).toEqual([
+      ['POST', '/api/scenarios'],
+      ['DELETE', `/api/scenarios/${RACHEL.id}`],
+    ]);
   });
 
   it('cannot dial when the scenarios fail to load, and says why', async () => {
