@@ -80,7 +80,10 @@ describe('ProspectAgent.llmNode', () => {
     const request = sent[0]!;
     expect(request.messages).toEqual([
       { role: 'user', content: '(Your phone rings and you answer.)' },
-      { role: 'assistant', content: 'Claire Hughes.' },
+      {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Claire Hughes.', cache_control: { type: 'ephemeral' } }],
+      },
       { role: 'user', content: "Hi Claire, it's Sam. Got thirty seconds?" },
       { role: 'system', content: NOTE },
     ]);

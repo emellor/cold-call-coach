@@ -1,4 +1,7 @@
-import type { BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/messages/messages';
+import type {
+  BetaMessageParam,
+  BetaMessageStreamParams,
+} from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import { HintDraft, JudgeResult } from '@ccc/contracts';
 import {
   type ChatTurn,
@@ -34,7 +37,8 @@ function modelOptions(model: string, effort: Effort) {
 /**
  * The prospect's request. Never carries temperature, top_p or top_k: Opus 5
  * rejects them. The tools and the persona are the same every turn, so the
- * prefix up to the persona caches from turn 2.
+ * prefix up to the persona caches from turn 2, and the conversation up to her
+ * last reply is cached as well (`withHistoryBreakpoint`).
  */
 export function prospectRequest(input: {
   model: string;
@@ -48,10 +52,30 @@ export function prospectRequest(input: {
     max_tokens: PROSPECT_MAX_TOKENS,
     tools: PROSPECT_TOOLS,
     system: [{ type: 'text', text: input.persona, cache_control: { type: 'ephemeral' } }],
-    messages: input.messages,
+    messages: withHistoryBreakpoint(input.messages),
     ...(Object.keys(options.effort).length ? { output_config: options.effort } : {}),
     ...options.fallbacks,
   };
+}
+
+/**
+ * Marks her last reply as a cache breakpoint. Each of her requests resends the
+ * whole conversation, several times a turn while LiveKit drafts replies early,
+ * and without this all of it after the persona was billed at the full input
+ * price every time. Everything before her last reply is settled, so it is read
+ * from the cache. What follows it is sent at full price: the rep's latest words,
+ * which change while a draft is revised, and the state note.
+ */
+export function withHistoryBreakpoint(messages: readonly ChatTurn[]): BetaMessageParam[] {
+  const last = messages.findLastIndex((m) => m.role === 'assistant');
+  return messages.map((m, i) =>
+    i === last
+      ? {
+          role: m.role,
+          content: [{ type: 'text', text: m.content, cache_control: { type: 'ephemeral' } }],
+        }
+      : m,
+  );
 }
 
 /**

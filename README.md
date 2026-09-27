@@ -171,8 +171,10 @@ A call over **$2** (`warnAboveUsd` in the same file) is flagged three ways:
 
 Claude is most of the cost. Her replies and the judge run on every turn you take, so
 `PROSPECT_MODEL`, `COACH_MODEL` and their efforts matter most. The prompt cache makes
-every turn after the first cheaper. `PROSPECT_MODEL=claude-haiku-4-5` costs a fifth as
-much per token as Opus 5. The voice costs little by comparison: in the current table,
+every turn after the first cheaper. `claude-sonnet-5` costs 40% as much per token as Opus 5.
+`claude-haiku-4-5` costs a fifth as much, but it caches nothing shorter than 4,096 tokens and
+her prompts are shorter, so per call it saves little more than Sonnet 5. The voice costs
+little by comparison: in the current table,
 Deepgram is $0.0077 a minute and Cartesia $0.05 per 1,000 characters.
 
 ## Latency
@@ -188,9 +190,9 @@ The **latency panel** under the transcript shows each reply's stages and a runni
 | End to end      | From you stopping to her voice starting                               |
 
 Her reply streams: each sentence goes to Cartesia while Claude is still writing the next
-one, and a test holds the agent to that. Her prompt is marked for caching, so from the
-second turn on most of it should come from the cache; the report below shows whether it
-did.
+one, and a test holds the agent to that. Her persona and the conversation up to her last
+reply are cached, so after the first request only your latest words and her state note are
+billed at the full input price; the report below shows whether the cache was read.
 
 `pnpm report:latency` prints p50 and p90 for each stage over the logged calls, grouped
 by her model and effort, with cache hits and cost. It covers the 20 most recent calls
