@@ -213,18 +213,26 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
   Rewind is refused once a meeting is booked. `rewind.session.test.ts` runs the whole thing
   on a real `AgentSession` in LiveKit's text-only mode.
 
-- **Hint**: `claudeHints` runs a structured-output call for `HintDraft` on
-  `COACH_MODEL`/`COACH_EFFORT`, with an 8 s cap.
-  - Its prompt (`core/coach/hint.ts`) never sees her private facts, objections or state; a
-    test asserts it.
-  - Usage is logged as the call's `hint` lane.
+- **Get help** (the `call.hint` RPC; the button was once "Hint", and the RPC, the `hint`
+  event and the `hint` cost lane keep that name): `claudeHints` runs a structured-output
+  call for `HintDraft` on `COACH_MODEL`/`COACH_EFFORT`, with an 8 s cap.
+  - The answer is one line to say now (`say`), why it fits this point of the call (`why`),
+    and a comeback if she pushes back (`ifPushback`). `helpFrom` in `core/coach/hint.ts`
+    cleans it; the RPC's schema is `HintResponse`.
+  - Its prompt (`core/coach/hint.ts`) sees the product, who she is, the last 12 turns and
+    the stage tracker's statuses (`stageStatuses(brain.stages, …)`), and never her private
+    facts, objections or state; a test asserts it.
+  - Usage is logged as the call's `hint` lane. Calls logged before Get help carry
+    `{ suggestions }` in their `hint` events; the review only counts them, so both shapes
+    still work.
 - **The review** gets the controls from the `pause`, `resume`, `hint` and `rewind` events.
   Their payloads have schemas in `contracts/callLog.ts`. The API tallies them with
   `controlsUsed` into the prompt, and tells Claude not to mark the rep down for using them.
 - **Web**: `useCall` owns the controls, and `useShortcuts` owns Space, H, R and Esc.
   - Shortcuts ignore typing and modifier keys.
   - Space still presses a focused button rather than pausing.
-  - Tips and hints overlay the video, so the controls never move.
+  - Tips and Get help's card overlay the stage, so the controls never move; the card
+    scrolls rather than run past the stage on a small screen.
 
 ## Cost, latency, resilience and sign-in (M6)
 

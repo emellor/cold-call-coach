@@ -6,7 +6,12 @@ import {
   REP_IDENTITY,
   Topics,
 } from '@ccc/contracts';
-import { buildHintSystemPrompt, buildHintUserPrompt, buildProspectSystemPrompt } from '@ccc/core';
+import {
+  buildHintSystemPrompt,
+  buildHintUserPrompt,
+  buildProspectSystemPrompt,
+  stageStatuses,
+} from '@ccc/core';
 import { type JobContext, type VAD, inference, log, voice } from '@livekit/agents';
 import * as cartesia from '@livekit/agents-plugin-cartesia';
 import * as deepgram from '@livekit/agents-plugin-deepgram';
@@ -293,7 +298,10 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
       }),
       hintPrompt: () => ({
         system: hintSystem,
-        user: buildHintUserPrompt(chatContextToTurns(agent.chatCtx)),
+        user: buildHintUserPrompt(
+          chatContextToTurns(agent.chatCtx),
+          stageStatuses(brain.stages, brain.meeting !== null),
+        ),
       }),
       latency,
       logger,

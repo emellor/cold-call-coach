@@ -57,35 +57,40 @@ describe('NoticeLine', () => {
   });
 });
 
-describe('HintCard', () => {
-  it('shows the lines in order, and closes', () => {
+describe('HintCard (Get help)', () => {
+  const help = {
+    say: 'What does month end look like for you?',
+    why: 'Discovery: an open question about her process.',
+    ifPushback: 'Fair enough. What would make ten minutes worth it?',
+  };
+
+  it('shows what to say, why, and what to say if she pushes back; and closes', () => {
     const onClose = vi.fn();
-    render(
-      <HintCard
-        hint={{ status: 'ready', suggestions: ['One?', 'Two?', 'Three?'] }}
-        onClose={onClose}
-      />,
-    );
-    expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual([
-      'One?',
-      'Two?',
-      'Three?',
-    ]);
-    fireEvent.click(screen.getByRole('button', { name: 'Close the hint' }));
+    render(<HintCard hint={{ status: 'ready', help }} onClose={onClose} />);
+    const card = screen.getByRole('region', { name: 'Help' });
+    expect(card).toHaveAttribute('aria-busy', 'false');
+    expect(card).toHaveTextContent('What to say now');
+    expect(card.querySelector('blockquote')).toHaveTextContent(help.say);
+    expect(card).toHaveTextContent(`Why: ${help.why}`);
+    expect(card).toHaveTextContent(`If she pushes back:${help.ifPushback}`);
+    fireEvent.click(screen.getByRole('button', { name: 'Close help' }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it('says it is thinking, or why it failed', () => {
+  it('leaves out the comeback when there is none', () => {
+    const { say, why } = help;
+    render(<HintCard hint={{ status: 'ready', help: { say, why } }} onClose={() => {}} />);
+    expect(screen.queryByText('If she pushes back:')).toBeNull();
+  });
+
+  it('says it is working, or why it failed', () => {
     const { rerender } = render(<HintCard hint={{ status: 'loading' }} onClose={() => {}} />);
-    expect(screen.getByRole('region', { name: 'Hint' })).toHaveAttribute('aria-busy', 'true');
-    expect(screen.getByText('Thinking of lines…')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Help' })).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByText('Working out what to say…')).toBeInTheDocument();
     rerender(
-      <HintCard
-        hint={{ status: 'error', message: 'The hint took too long.' }}
-        onClose={() => {}}
-      />,
+      <HintCard hint={{ status: 'error', message: 'Help took too long.' }} onClose={() => {}} />,
     );
-    expect(screen.getByRole('alert')).toHaveTextContent('The hint took too long.');
+    expect(screen.getByRole('alert')).toHaveTextContent('Help took too long.');
   });
 });
 

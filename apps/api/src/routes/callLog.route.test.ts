@@ -134,7 +134,11 @@ describe.skipIf(!hasDb)('the call log and its review (real Postgres)', () => {
         ...log.events,
         { tMs: 12_500, kind: 'pause', payload: {} },
         { tMs: 20_000, kind: 'resume', payload: { pausedMs: 7_500 } },
-        { tMs: 21_000, kind: 'hint', payload: { suggestions: ['a', 'b', 'c'], ms: 1_700 } },
+        {
+          tMs: 21_000,
+          kind: 'hint',
+          payload: { say: 'What drives that?', why: 'Discovery.', ms: 1_700 },
+        },
         {
           tMs: 22_000,
           kind: 'rewind',

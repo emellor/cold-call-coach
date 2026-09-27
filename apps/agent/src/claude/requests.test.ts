@@ -171,7 +171,7 @@ describe('judgeRequest', () => {
 describe('hintRequest', () => {
   const input = { effort: 'low' as const, system: 'You coach.', user: 'Rep: hi' };
 
-  it('asks the coach model for three lines as structured output, with a cached system', () => {
+  it('asks the coach model for help as structured output, with a cached system', () => {
     const request = hintRequest({ ...input, model: 'claude-opus-5' });
     expect(request).toMatchObject({
       model: 'claude-opus-5',
@@ -183,8 +183,13 @@ describe('hintRequest', () => {
     });
     for (const key of ['temperature', 'top_p', 'top_k']) expect(request).not.toHaveProperty(key);
     const { format } = request.output_config;
-    expect(JSON.stringify(format.schema)).toContain('Exactly three different lines');
-    expect(format.parse('{"suggestions":["a","b","c"]}')).toEqual({ suggestions: ['a', 'b', 'c'] });
+    expect(JSON.stringify(format.schema)).toContain('The exact words the rep should say next');
+    expect(format.schema).toMatchObject({ required: ['say', 'why', 'ifPushback'] });
+    expect(format.parse('{"say":"a","why":"b","ifPushback":"c"}')).toEqual({
+      say: 'a',
+      why: 'b',
+      ifPushback: 'c',
+    });
   });
 
   it('drops effort and fallbacks for Haiku 4.5', () => {

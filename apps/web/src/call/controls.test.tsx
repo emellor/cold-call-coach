@@ -30,11 +30,11 @@ describe('ModeChoice', () => {
 });
 
 describe('LiveControls', () => {
-  it('offers pause, hint, rewind and hang up in a coached call, with their shortcuts', () => {
+  it('offers pause, Get help, rewind and hang up in a coached call, with their shortcuts', () => {
     const props = controls();
     for (const [name, keys] of [
       [/Pause/, 'Space'],
-      [/Hint/, 'H'],
+      [/Get help/, 'H'],
       [/Rewind/, 'R'],
       [/Hang up/, 'Escape'],
     ] as const) {

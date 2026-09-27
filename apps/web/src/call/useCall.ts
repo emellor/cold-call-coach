@@ -6,6 +6,7 @@ import {
   type CoachTipPayload,
   type CreateCallRequest,
   type DebugLatencyPayload,
+  type HintResponse,
   type ProspectStatePayload,
   RpcMethods,
   type StageStatus,
@@ -48,9 +49,10 @@ export interface CoachView {
   tip?: CoachTipPayload;
 }
 
+/** Get help (the hint RPC): what to say now, why, and what to say if she pushes back. */
 export type HintView =
   | { status: 'loading' }
-  | { status: 'ready'; suggestions: string[] }
+  | { status: 'ready'; help: HintResponse }
   | { status: 'error'; message: string };
 
 /** A line about the last control: rewound, couldn't pause… */
@@ -433,9 +435,9 @@ export function useCall() {
     hintingRef.current = true;
     setView((v) => ({ ...v, hint: { status: 'loading' } }));
     try {
-      const { suggestions } = await callAgent(room, RpcMethods.hint);
+      const help = await callAgent(room, RpcMethods.hint);
       if (roomRef.current === room) {
-        setView((v) => ({ ...v, hint: { status: 'ready', suggestions } }));
+        setView((v) => ({ ...v, hint: { status: 'ready', help } }));
       }
     } catch (error) {
       if (roomRef.current === room) {

@@ -32,7 +32,7 @@ Never paste them into a chat, an issue or a commit. `.env.example` lists every v
 | Variable                                               | Used by                                                         | Where to get it                                                                                                                                                   |
 | ------------------------------------------------------ | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | API (room tokens) and agent                                     | LiveKit Cloud: your project → Settings → API keys → **Create key**. The secret is shown only then; **Generate Token** makes a room token, which is not the secret |
-| `ANTHROPIC_API_KEY`                                    | Agent (her replies, the judge, hints) and API (the review)      | Claude Console → API keys. Create it in a workspace                                                                                                               |
+| `ANTHROPIC_API_KEY`                                    | Agent (her replies, the judge, Get help) and API (the review)   | Claude Console → API keys. Create it in a workspace                                                                                                               |
 | `ANTHROPIC_WORKSPACE_ID`                               | Wherever `ANTHROPIC_API_KEY` is, only for a key in no workspace | The workspace's ID (`wrkspc_…`) from the Claude Console. A key created in a workspace doesn't need it                                                             |
 | `DEEPGRAM_API_KEY`                                     | Agent: hearing you                                              | Deepgram console → API keys                                                                                                                                       |
 | `CARTESIA_API_KEY`                                     | Agent: her voice                                                | Cartesia → API keys                                                                                                                                               |
@@ -113,15 +113,15 @@ A **coached** call shows the live coach under her video:
 
 You also get controls, each with a key:
 
-| Control        | Key   | What it does                                                                                                                   |
-| -------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Pause / Resume | Space | Mutes your mic and stops her mid-sentence; she ignores anything she hears until you resume                                     |
-| Hint           | H     | Three lines you could say next, from Claude on `COACH_MODEL` (it never sees her private facts)                                 |
-| Rewind         | R     | Takes back your last turn and her reply. Her mood goes back to how it was, she says her previous line again, and you retake it |
-| Hang up        | Esc   | Ends the call                                                                                                                  |
+| Control        | Key   | What it does                                                                                                                                                                      |
+| -------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pause / Resume | Space | Mutes your mic and stops her mid-sentence; she ignores anything she hears until you resume                                                                                        |
+| Get help       | H     | What to say right now: the exact words, why they fit this point of the call, and what to say if she pushes back. From Claude on `COACH_MODEL`, which never sees her private facts |
+| Rewind         | R     | Takes back your last turn and her reply. Her mood goes back to how it was, she says her previous line again, and you retake it                                                    |
+| Hang up        | Esc   | Ends the call                                                                                                                                                                     |
 
 An **exam** call shows nothing live and offers only **Hang up**: the review is your only
-feedback. After a coached call, the review mentions any pauses, hints and rewinds, and it
+feedback. After a coached call, the review mentions any pauses, uses of Get help and rewinds, and it
 scores the call as it stands after them: a rewound turn is not in the transcript.
 
 ## After the call
@@ -149,7 +149,7 @@ one, the page says so, and **Try again** reruns the review once the key is set.
 Every call is priced from what it used. The review page's **Cost** section shows it line
 by line, and **History** has a Cost column.
 
-- **Claude**, per lane: her replies, the judge, your hints and the review. Input tokens,
+- **Claude**, per lane: her replies, the judge, Get help (the `hint` lane) and the review. Input tokens,
   cache writes, cache reads and output are each priced at their own rate.
 - **Deepgram**: the minutes of your audio it transcribed.
 - **Cartesia**: the characters she spoke.

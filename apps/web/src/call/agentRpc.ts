@@ -5,7 +5,7 @@ import { type RpcMethod, parseRpcResponse } from '@ccc/contracts';
 import { type Room, RpcError } from 'livekit-client';
 import type { z } from 'zod';
 
-/** livekit-client clamps anything shorter to 8 s. A hint targets about 2 s. */
+/** livekit-client clamps anything shorter to 8 s. Get help targets about 2 s. */
 export const RPC_TIMEOUT_MS = 10_000;
 
 /** A control that didn't happen, and why, in words for the rep. */
