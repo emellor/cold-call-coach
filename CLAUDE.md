@@ -89,8 +89,10 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
   voice (or `CARTESIA_VOICE_ID` while the file has the placeholder), STT locale, keyterms
   and opening line. A missing piece ends the call with a reason the rep can read.
 - **Barge-in**: LiveKit cancels the `llmNode` stream; `claudeTextStream` aborts the HTTP request
-  on cancel. Preemptive generation is on (LiveKit's default), so a reply can be generated and
-  then discarded: act on anything a reply "does" only once its message is committed.
+  on cancel. Preemptive generation is on, so a reply can be generated and then discarded: act
+  on anything a reply "does" only once its message is committed. It is capped at one draft a
+  turn (`PREEMPTIVE_GENERATION`, LiveKit's default is three): each draft is a full Claude
+  request, and in one measured call 25 requests became 8 heard replies.
 - **Turn detector**: `TURN_DETECTOR=multilingual` (the plan's text model) imports
   `@livekit/agents-plugin-livekit` only when selected, because importing it registers an
   inference runner that crashes the worker if the model hasn't been downloaded

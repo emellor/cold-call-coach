@@ -41,6 +41,14 @@ const JUDGE_SETTLE_MS = 5_000;
 /** The voice pipeline's models, named once: they're also how the call is priced. */
 const STT_MODEL = 'nova-3';
 const TTS_MODEL = 'sonic-3';
+/**
+ * LiveKit drafts her reply at each pause while the rep is still talking, and drops
+ * the draft when they carry on; every draft is a full Claude request. Its default
+ * allows three a turn, and in one measured call 25 requests became the 8 replies
+ * she said. One keeps the head start on a short turn; after a long one she answers
+ * once the rep has finished.
+ */
+const PREEMPTIVE_GENERATION = { maxRetries: 1 };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -244,7 +252,10 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
         speed: cartesiaSpeed(scenario.voice.speed),
       }),
       vad,
-      turnHandling: { turnDetection: await turnDetection(config.TURN_DETECTOR) },
+      turnHandling: {
+        turnDetection: await turnDetection(config.TURN_DETECTOR),
+        preemptiveGeneration: PREEMPTIVE_GENERATION,
+      },
     });
 
     const controller = new CallController({
