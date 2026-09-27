@@ -164,13 +164,27 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
   case, punctuation and whitespace. Items whose quote can't be found are dropped and
   counted in `quotesDropped`. Scores are clamped, stages come in rubric order, and cost is
   priced with `core/claude/pricing.ts`.
+- **The review coaches turn by turn.** `ReviewDraft.moments` is the walkthrough: each
+  moment is `strong`, `mistake` or `missed`, with a quote (the rep's words, or hers for a
+  missed chance, and `validateQuotes` checks it against that speaker), what happened, the
+  words to say instead (blank for a strong one) and why. It is stored in turn order, at most
+  `MAX_MOMENTS`. Each stage also has `nextTime`, and the review has three `priorities`.
+  - The prompt shows, under each rep turn, how her interest and patience moved and the live
+    judge's reading (`core/review/reactions.ts`, from the `judgement` events: the k-th rep
+    turn in the transcript is the brain's turn k, and after a rewind the last event for a
+    number is the retake's). The system prompt also gives her thresholds, so a review can
+    say what a line cost.
+  - Stored reviews are never rewritten, so every field added to `ReviewResult` is optional.
+    A review from before the walkthrough has `topMoments` instead, and the page shows them
+    as mistakes with a note to review again.
 - **Turn numbers in reviews count from 1** (`LoggedTurn.idx + 1`), matching the numbered
   transcript the reviewer sees and the page's `#turn-N` anchors.
 - **Structured outputs** use `core/claude/structuredOutput.ts`, not the SDK's zod helper.
   It keeps `enum` and `const` as real constraints, and it moves the number and length
   bounds the API rejects into the description; zod enforces them on parse.
 - **The web** moves to `/calls/:id` 1.5 s after a call she answered ends. That page polls
-  every 2 s until the review settles, for up to 5 minutes. `/calls` is the history.
+  every 2 s until the review settles, for up to 5 minutes (the review itself times out at
+  4). `/calls` is the history.
 
 ## The live coach and the controls (M5)
 

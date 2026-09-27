@@ -1,15 +1,21 @@
 import {
   type CallMetrics,
+  type CallTurn,
   METRIC_TARGETS,
   type ReviewResult,
   type StageReview,
 } from '@ccc/contracts';
 import type { ReactNode } from 'react';
+import { TurnLink } from './TurnLink.tsx';
+import { Walkthrough } from './Walkthrough.tsx';
 import { STAGE_LABELS } from './format.ts';
+import { walkthrough } from './moments.ts';
 
 interface ScorecardProps {
   review: ReviewResult;
   metrics: CallMetrics | null;
+  /** The transcript, for the time of each moment. */
+  turns: readonly CallTurn[];
   /** Scroll the transcript to a turn (numbered from 1). */
   onTurn: (turn: number) => void;
 }
@@ -20,18 +26,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       <h3 className="mb-3 text-sm font-medium tracking-wide text-slate-300 uppercase">{title}</h3>
       {children}
     </section>
-  );
-}
-
-export function TurnLink({ turn, onTurn }: { turn: number; onTurn: (turn: number) => void }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onTurn(turn)}
-      className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-xs text-sky-300 hover:bg-slate-700 focus-visible:outline-2 focus-visible:outline-sky-400"
-    >
-      turn {turn}
-    </button>
   );
 }
 
@@ -57,6 +51,12 @@ function StageRow({ stage, onTurn }: { stage: StageReview; onTurn: (turn: number
         <ScoreDots score={stage.score} label={label} />
       </div>
       <p className="mt-1 text-sm text-slate-300">{stage.feedback}</p>
+      {stage.nextTime && (
+        <p className="mt-1.5 text-sm text-slate-300">
+          <span className="font-medium text-emerald-300">Next time: </span>
+          {stage.nextTime}
+        </p>
+      )}
       {stage.evidence.length > 0 && (
         <ul className="mt-2 space-y-1">
           {stage.evidence.map((e) => (
@@ -173,35 +173,26 @@ export function DeliveryStats({ metrics }: { metrics: CallMetrics }) {
 }
 
 /** The post-call scorecard (PLAN.md §8.4). */
-export function Scorecard({ review, metrics, onTurn }: ScorecardProps) {
+export function Scorecard({ review, metrics, turns, onTurn }: ScorecardProps) {
   return (
     <div className="flex flex-col gap-4">
-      <Section title="Top moments">
-        {review.topMoments.length === 0 ? (
-          <p className="text-sm text-slate-400">No moments to call out.</p>
-        ) : (
-          <ol className="space-y-3">
-            {review.topMoments.map((m, i) => (
-              <li key={`${m.turn}:${i}`} className="rounded-lg border border-slate-800 p-3">
-                <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-                  <span>Moment {i + 1}</span>
-                  <TurnLink turn={m.turn} onTurn={onTurn} />
-                </div>
-                <dl className="mt-2 grid gap-1 text-sm sm:grid-cols-[6rem_1fr]">
-                  <dt className="text-slate-500">You said</dt>
-                  <dd>
-                    <q className="text-rose-200">{m.youSaid}</q>
-                  </dd>
-                  <dt className="text-slate-500">Try instead</dt>
-                  <dd>
-                    <q className="text-emerald-200">{m.tryInstead}</q>
-                  </dd>
-                  <dt className="text-slate-500">Why</dt>
-                  <dd className="text-slate-300">{m.why}</dd>
-                </dl>
-              </li>
+      {review.priorities && review.priorities.length > 0 && (
+        <Section title="Your next call">
+          <ol className="list-decimal space-y-1.5 pl-5 text-slate-100 marker:text-sky-400">
+            {review.priorities.map((p) => (
+              <li key={p}>{p}</li>
             ))}
           </ol>
+        </Section>
+      )}
+
+      <Section title="Turn by turn">
+        <Walkthrough moments={walkthrough(review)} turns={turns} onTurn={onTurn} />
+        {!review.moments && (
+          <p className="mt-3 text-xs text-slate-500">
+            This review was written before the turn-by-turn walkthrough: review it again for the
+            full version.
+          </p>
         )}
       </Section>
 

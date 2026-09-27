@@ -25,9 +25,10 @@ import {
   structuredFormat,
 } from '@ccc/core';
 
-/** A full review is ~1–2k tokens of JSON; the rest is room for high-effort thinking. */
+/** A full review, walkthrough and all, is ~3–5k tokens of JSON; this leaves ample room. */
 export const REVIEW_MAX_TOKENS = 16_000;
-export const REVIEW_TIMEOUT_MS = 180_000;
+/** Writing that much takes a minute or two; past four minutes something is wrong. */
+export const REVIEW_TIMEOUT_MS = 240_000;
 
 const REVIEW_FORMAT = structuredFormat(ReviewDraft);
 

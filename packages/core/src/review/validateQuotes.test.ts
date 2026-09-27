@@ -1,4 +1,4 @@
-import type { ReviewDraft } from '@ccc/contracts';
+import { MAX_MOMENTS, type ReviewDraft } from '@ccc/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   type QuoteTurn,
@@ -50,6 +50,20 @@ describe('findQuote', () => {
   });
 });
 
+const moment = (
+  kind: ReviewDraft['moments'][number]['kind'],
+  turn: number,
+  quote: string,
+): ReviewDraft['moments'][number] => ({
+  turn,
+  kind,
+  stage: 'discovery',
+  quote,
+  whatHappened: ` ${kind} at ${turn} `,
+  sayInstead: 'What do those reports leave out?',
+  why: 'An open question about her world.',
+});
+
 const draft: ReviewDraft = {
   outcome: 'She put you off with an email.',
   overallScore: 31.6,
@@ -63,20 +77,24 @@ const draft: ReviewDraft = {
         { turn: 2, quote: 'I promise this will be quick' }, // never said
       ],
       feedback: 'Drop the apology.',
+      nextTime: ' Ask for thirty seconds instead. ',
     },
     {
       key: 'objections',
       score: 9,
       evidence: [{ turn: 7, quote: 'ours are better' }],
       feedback: 'x',
+      nextTime: 'y',
     },
-    { key: 'opener', score: 5, evidence: [], feedback: 'duplicate' },
+    { key: 'opener', score: 5, evidence: [], feedback: 'duplicate', nextTime: '' },
   ],
-  topMoments: [
-    { turn: 4, youSaid: 'We do per-site energy dashboards', tryInstead: 'a', why: 'b' },
-    { turn: 6, youSaid: 'Our product is the best on the market', tryInstead: 'c', why: 'd' },
-    { turn: 6, youSaid: 'Can I send you some information', tryInstead: 'e', why: 'f' },
-    { turn: 2, youSaid: 'Hi Claire', tryInstead: 'g', why: 'h' },
+  moments: [
+    moment('mistake', 4, 'We do per-site energy dashboards'),
+    moment('mistake', 6, 'Our product is the best on the market'), // never said
+    moment('missed', 5, 'We already get reports from our supplier'), // hers: a missed chance
+    moment('mistake', 5, 'We already get reports from our supplier'), // hers, but not a missed chance
+    moment('mistake', 6, 'Can I send you some information'),
+    { ...moment('strong', 2, 'Hi Claire'), sayInstead: 'Nothing to change here.' },
   ],
   objections: [
     {
@@ -95,6 +113,7 @@ const draft: ReviewDraft = {
     },
   ],
   strengths: [' Clear name and company. ', '', 'Energy', 'Brevity', 'Four'],
+  priorities: [' Ask before you pitch. ', 'Find her problem first.', '', 'Book a time.', 'Four'],
   drill: { title: ' Permission openers ', instructions: 'Practise ten openers.' },
 };
 
@@ -103,15 +122,17 @@ describe('validateQuotes', () => {
     const { review, dropped } = validateQuotes(draft, turns);
     expect(review.stages[0]?.evidence).toEqual([{ turn: 2, quote: 'sorry to bother you' }]);
     expect(review.stages[1]?.evidence).toEqual([{ turn: 6, quote: 'ours are better' }]);
-    expect(review.topMoments.map((m) => m.youSaid)).toEqual([
-      'We do per-site energy dashboards',
-      'Can I send you some information',
-      'Hi Claire',
+    expect(review.moments.map((m) => [m.kind, m.turn, m.quote])).toEqual([
+      ['mistake', 4, 'We do per-site energy dashboards'],
+      ['missed', 5, 'We already get reports from our supplier'],
+      ['mistake', 6, 'Can I send you some information'],
+      ['strong', 2, 'Hi Claire'],
     ]);
     expect(review.objections).toHaveLength(1);
     expect(dropped).toEqual([
       { field: 'stages.opener.evidence', turn: 2, quote: 'I promise this will be quick' },
-      { field: 'topMoments', turn: 6, quote: 'Our product is the best on the market' },
+      { field: 'moments', turn: 6, quote: 'Our product is the best on the market' },
+      { field: 'moments', turn: 5, quote: 'We already get reports from our supplier' },
       { field: 'objections', turn: 5, quote: 'We already get reports from our supplier' },
     ]);
   });
@@ -130,15 +151,44 @@ describe('finalizeReview', () => {
   it('stores a clean ReviewResult: rounded, clamped, capped and in rubric order', () => {
     const { result, dropped } = finalizeReview(draft, turns, criteria);
     expect(result.overallScore).toBe(32);
-    expect(result.stages.map((s) => [s.key, s.score])).toEqual([
-      ['opener', 1],
-      ['objections', 5],
+    expect(result.stages.map((s) => [s.key, s.score, s.nextTime])).toEqual([
+      ['opener', 1, 'Ask for thirty seconds instead.'],
+      ['objections', 5, 'y'],
     ]);
-    expect(result.topMoments).toHaveLength(3);
     expect(result.objections[0]?.score).toBe(1);
     expect(result.strengths).toEqual(['Clear name and company.', 'Energy', 'Brevity']);
+    expect(result.priorities).toEqual([
+      'Ask before you pitch.',
+      'Find her problem first.',
+      'Book a time.',
+    ]);
     expect(result.drill.title).toBe('Permission openers');
     expect(result.quotesDropped).toBe(dropped.length);
-    expect(result.quotesDropped).toBe(3);
+    expect(result.quotesDropped).toBe(4);
+    expect(result).not.toHaveProperty('topMoments');
+  });
+
+  it('walks through the call in turn order, with nothing to say instead of a strong moment', () => {
+    const { result } = finalizeReview(draft, turns, criteria);
+    expect(result.moments).toEqual([
+      {
+        turn: 2,
+        kind: 'strong',
+        stage: 'discovery',
+        quote: 'Hi Claire',
+        whatHappened: 'strong at 2',
+        sayInstead: '',
+        why: 'An open question about her world.',
+      },
+      expect.objectContaining({ turn: 4, kind: 'mistake', whatHappened: 'mistake at 4' }),
+      expect.objectContaining({ turn: 5, kind: 'missed' }),
+      expect.objectContaining({ turn: 6, kind: 'mistake' }),
+    ]);
+  });
+
+  it('keeps at most MAX_MOMENTS, the earliest', () => {
+    const many = Array.from({ length: MAX_MOMENTS + 3 }, () => moment('strong', 2, 'Hi Claire'));
+    const { result } = finalizeReview({ ...draft, moments: many }, turns, criteria);
+    expect(result.moments).toHaveLength(MAX_MOMENTS);
   });
 });

@@ -369,21 +369,25 @@ The review model gets:
 - the rubric;
 - the scenario and product;
 - the computed metrics, as facts it must not recount;
-- the numbered transcript.
+- the numbered transcript, with how her interest and patience moved after each rep turn and the live judge's reading of it.
 
 It returns `ReviewResult`:
 
 ```ts
 { outcome, overallScore /*0-100*/, summary,
   stages: [{ key: 'opener'|'reason'|'discovery'|'objections'|'next_step'|'delivery',
-             score /*1-5*/, evidence: [{ turn, quote }], feedback }],
-  topMoments: [{ turn, youSaid, tryInstead, why }],          // max 3
+             score /*1-5*/, evidence: [{ turn, quote }], feedback, nextTime }],
+  moments: [{ turn, kind: 'strong'|'mistake'|'missed', stage, quote,   // the walkthrough,
+              whatHappened, sayInstead, why }],                        // in turn order
   objections: [{ turn, objection, yourResponse, score, better }],
-  strengths: string[],                                        // max 3
+  strengths: string[],                                                 // max 3
+  priorities: string[],                                                // max 3
   drill: { title, instructions } }
 ```
 
-**Quote validation** (`core/validateQuotes`): every `quote` and `youSaid` must appear in the transcript, after normalising whitespace, case and punctuation. Drop or flag any that don't. Unit-test this.
+The walkthrough replaced three `topMoments` (`{ turn, youSaid, tryInstead, why }`), which reviews stored before it still carry.
+
+**Quote validation** (`core/validateQuotes`): every evidence `quote`, moment `quote` and `yourResponse` must appear in the transcript, after normalising whitespace, case and punctuation, and a moment's quote in a turn of the right speaker (hers for a missed chance). Drop or flag any that don't. Unit-test this.
 
 ### 8.5 Rubric v1 (`scenarios/rubrics/cold-call-v1.json`)
 

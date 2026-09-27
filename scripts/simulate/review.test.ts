@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { ProductSpec, RubricSpec, ScenarioSpec } from '@ccc/contracts';
+import { type JudgeSignals, ProductSpec, RubricSpec, ScenarioSpec } from '@ccc/contracts';
 import { describe, expect, it } from 'vitest';
 import type { BetaRawMessageStreamEvent } from '../../apps/agent/src/claude/client.ts';
 import type { StreamingMessages } from '../../apps/api/src/review/reviewer.ts';
@@ -13,6 +13,20 @@ const scenario = ScenarioSpec.parse(load('medium-finance-director.json'));
 const product = ProductSpec.parse(load('product.json'));
 const rubric = RubricSpec.parse(load('rubrics/cold-call-v1.json'));
 
+const NO_SIGNALS: JudgeSignals = {
+  askedPermission: false,
+  gaveRelevantReason: false,
+  askedOpenQuestion: false,
+  followedUp: false,
+  acknowledgedObjection: false,
+  pitchedFeatures: false,
+  ignoredHerPoint: false,
+  pushy: false,
+  rude: false,
+  askedForMeeting: false,
+  proposedSpecificTime: false,
+};
+
 const result: SimResult = {
   outcome: 'hung_up_by_prospect',
   detail: 'Waste of time',
@@ -24,7 +38,24 @@ const result: SimResult = {
       actions: [],
       judged: undefined,
     },
-    { turn: 2, rep: 'We do dashboards.', prospect: 'Goodbye.', actions: [], judged: undefined },
+    {
+      turn: 2,
+      rep: 'We do dashboards.',
+      prospect: 'Goodbye.',
+      actions: [],
+      judged: {
+        turn: 2,
+        judged: true,
+        judge: {
+          stage: 'pitch',
+          signals: { ...NO_SIGNALS, pitchedFeatures: true },
+          revealEarned: null,
+          tip: null,
+        },
+        before: { turn: 1, interest: 20, patience: 12, painsRevealed: [] },
+        after: { turn: 2, interest: 20, patience: 0, painsRevealed: [] },
+      },
+    },
   ],
   final: { turn: 2, interest: 20, patience: 0, painsRevealed: [] },
   usage: { calls: 6, inputTokens: 0, cacheReadInputTokens: 0, outputTokens: 0 },
@@ -56,10 +87,22 @@ describe('reviewSimulatedCall', () => {
         score: 2,
         evidence: c.key === 'reason' ? [{ turn: 4, quote: 'We do dashboards' }] : [],
         feedback: 'x',
+        nextTime: 'y',
       })),
-      topMoments: [{ turn: 4, youSaid: 'We sell the best dashboards', tryInstead: 'y', why: 'z' }],
+      moments: [
+        {
+          turn: 4,
+          kind: 'mistake',
+          stage: 'reason',
+          quote: 'We sell the best dashboards', // never said
+          whatHappened: 'w',
+          sayInstead: 'y',
+          why: 'z',
+        },
+      ],
       objections: [],
       strengths: [],
+      priorities: [],
       drill: { title: 't', instructions: 'i' },
     };
     let sentUser = '';
@@ -101,11 +144,14 @@ describe('reviewSimulatedCall', () => {
       result,
     });
     expect(sentUser).toContain('How the call ended: she hung up (Waste of time).');
-    expect(sentUser).toContain('[4] Rep (0:06): We do dashboards.');
+    expect(sentUser).toContain(
+      '[4] Rep (0:06): We do dashboards.\n    → her interest 20 → 20, patience 12 → 0. Judge: pitch; pitched features\n',
+    );
+    expect(sentUser).toContain('[2] Rep (0:01): Hi Claire, it is Sam from WattGuard.\n[3]');
     expect(reviewed.review.stages.find((s) => s.key === 'reason')?.evidence).toEqual([
       { turn: 4, quote: 'We do dashboards' },
     ]);
-    expect(reviewed.review.topMoments).toEqual([]);
+    expect(reviewed.review.moments).toEqual([]);
     expect(reviewed.dropped).toHaveLength(1);
     expect(reviewed.costUsd).toBe(0.03);
   });

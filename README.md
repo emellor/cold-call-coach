@@ -130,14 +130,24 @@ Hang up (or get hung up on) and the page moves to the call's review. The agent s
 the call log to the API as the call ends, and the API reviews it with Claude
 (`REVIEW_MODEL`, default `claude-opus-5` at `REVIEW_EFFORT=high`):
 
+- **Your next call**: the three changes that would most improve it, most important first;
+- **Turn by turn**: the call walked through in order, each moment at its time. A mistake
+  says what went wrong and what it cost (what she said next, or how her interest and
+  patience moved), then the exact words to **say instead** and why they work. A missed
+  chance quotes what she said that you should have picked up on. A strong moment says why it
+  worked, so you keep doing it;
 - an overall score out of 100 and one per rubric stage (`scenarios/rubrics/cold-call-v1.json`),
-  each with quotes from the call;
+  each with what you did, how it landed, what to do **next time**, and quotes from the call;
 - your delivery against the targets: talk ratio, pace, fillers, open vs closed questions,
   longest monologue, time to your first question (measured by code, never by Claude);
-- the three moments that mattered most, as _you said → try instead → why_, and every
-  objection she raised with a better answer;
-- one drill, and the full transcript with each quote's turn marked. Click a turn number
-  to jump to it.
+- every objection she raised with a better answer: acknowledge, ask, answer, check;
+- one drill, and the full transcript with each moment and quote marked on its turn. Click a
+  turn number to jump to it.
+
+The coach sees how her interest and patience moved after each of your turns and the live
+judge's reading of it, which is how it can tell you what a line cost you. A review takes a
+minute or two. One written before the walkthrough still shows; **Review again** rewrites it
+in full.
 
 Every quote is checked against the transcript before it's shown. The review drops any
 it can't find, so each criticism uses your actual words. **History** lists every call

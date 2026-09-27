@@ -4,6 +4,7 @@ import {
   CallLogResponse,
   INTERNAL_SECRET_HEADER,
 } from '@ccc/contracts';
+import type { ReviewPromptInput } from '@ccc/core';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -110,12 +111,34 @@ describe.skipIf(!hasDb)('the call log and its review (real Postgres)', () => {
     ]);
     expect(result?.quotesDropped).toBe(1);
     expect(result?.objections).toHaveLength(1);
+    // The walkthrough comes back in turn order, her missed chance pinned to her words.
+    expect(result?.moments?.map((m) => [m.turn, m.kind, m.sayInstead])).toEqual([
+      [2, 'strong', ''],
+      [3, 'missed', 'Of course. Could I call you back at three?'],
+      [4, 'mistake', 'Sounds like now is bad. When is better, Tuesday at ten?'],
+    ]);
+    expect(result?.priorities).toHaveLength(2);
+    expect(result?.stages[0]?.nextTime).toBe('Next time, on opener: ask first.');
 
-    // The review was given the numbered transcript and the measured metrics.
+    // The review was given the numbered transcript, the measured metrics, and
+    // how she took each rep turn, from the judgement events.
     expect(asked).toHaveLength(1);
     expect(asked[0]).toMatchObject({
       outcome: 'hung_up_by_prospect',
       metrics: { durationSec: 90 },
+    });
+    const { turns: reviewed } = asked[0] as ReviewPromptInput;
+    expect(reviewed.map((t) => t.reaction?.patience)).toEqual([
+      undefined,
+      [55, 44],
+      undefined,
+      [44, 21],
+      undefined,
+    ]);
+    expect(reviewed[3]?.reaction?.reading).toEqual({
+      stage: 'objection_handling',
+      signals: ['ignoredHerPoint', 'pushy'],
+      revealed: null,
     });
 
     const [row] = await db.select().from(calls).where(eq(calls.id, id));
@@ -224,7 +247,7 @@ describe.skipIf(!hasDb)('the call log and its review (real Postgres)', () => {
     await app.reviewQueue.idle();
     expect(await detail(app, id)).toEqual(first);
     expect(await counts()).toEqual(before);
-    expect(before).toEqual({ turns: 5, events: 3, reviews: 1 });
+    expect(before).toEqual({ turns: 5, events: 4, reviews: 1 });
     expect(asked).toHaveLength(1);
   });
 

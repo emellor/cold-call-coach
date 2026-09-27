@@ -1,9 +1,10 @@
 // The review job: an in-process queue (PLAN.md §8.4). A call's review is
-// queued when its log arrives (or on rerun), then: metrics from the turns,
-// one Claude call, every quote checked against the transcript, and the result
-// stored with its model, rubric version and cost.
+// queued when its log arrives (or on rerun), then: metrics from the turns, how
+// she took each rep turn (from the judgement events), one Claude call, every
+// quote checked against the transcript, and the result stored with its model,
+// rubric version and cost.
 import { type ReviewStatus, type ScenarioCatalog, ScenarioSpec } from '@ccc/contracts';
-import { computeMetrics, controlsUsed, finalizeReview } from '@ccc/core';
+import { computeMetrics, controlsUsed, finalizeReview, turnReactions } from '@ccc/core';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { metricTurns } from '../calls/store.ts';
 import type { Db } from '../db/client.ts';
@@ -149,13 +150,18 @@ export class ReviewQueue {
     const scenario = ScenarioSpec.parse(stored?.spec);
     const rubric = this.#catalog.rubrics.find((r) => r.id === scenario.rubricId);
     if (!rubric) throw new Error(`The rubric "${scenario.rubricId}" is not loaded.`);
-    const controlEvents = await this.#db
+    // In the order they happened: after a rewind, the retake's judgement is the later one.
+    const callEvents = await this.#db
       .select({ kind: events.kind, payload: events.payload })
       .from(events)
       .where(
-        and(eq(events.callId, callId), inArray(events.kind, ['pause', 'resume', 'hint', 'rewind'])),
+        and(
+          eq(events.callId, callId),
+          inArray(events.kind, ['pause', 'resume', 'hint', 'rewind', 'judgement']),
+        ),
       )
       .orderBy(asc(events.tMs), asc(events.id));
+    const reactions = turnReactions(transcript, callEvents);
 
     return {
       prompt: {
@@ -165,8 +171,11 @@ export class ReviewQueue {
         metrics: computeMetrics(transcript, call.durationMs ?? 0),
         outcome: call.outcome ?? 'ended_by_rep',
         outcomeReason: call.outcomeReason,
-        turns: transcript.map((t) => ({ ...t, interrupted: t.interrupted ?? false })),
-        controls: controlsUsed(controlEvents),
+        turns: transcript.map((t, i) => {
+          const reaction = reactions[i];
+          return { ...t, interrupted: t.interrupted ?? false, ...(reaction ? { reaction } : {}) };
+        }),
+        controls: controlsUsed(callEvents),
       },
     };
   }

@@ -1,9 +1,16 @@
 // Every quote in a review must be words the call actually contains (PLAN.md
-// §8.4): evidence quotes, "you said" and "your response". Comparison ignores
+// §8.4): evidence quotes, the walkthrough's moments (the rep's words, or hers
+// for a missed opportunity) and "your response". Comparison ignores
 // whitespace, case and punctuation; an ellipsis may join fragments of one
 // turn in order. A quote pinned to the wrong turn moves to the turn that has
 // it; one found nowhere is dropped with its item.
-import type { ReviewDraft, ReviewResult, RubricCriterionKey, Speaker } from '@ccc/contracts';
+import {
+  MAX_MOMENTS,
+  type ReviewDraft,
+  type ReviewResult,
+  type RubricCriterionKey,
+  type Speaker,
+} from '@ccc/contracts';
 
 export interface QuoteTurn {
   speaker: Speaker;
@@ -11,7 +18,7 @@ export interface QuoteTurn {
 }
 
 export interface DroppedQuote {
-  /** Where in the review it was, e.g. "stages.discovery.evidence" or "topMoments". */
+  /** Where in the review it was, e.g. "stages.discovery.evidence" or "moments". */
   field: string;
   turn: number;
   quote: string;
@@ -87,23 +94,30 @@ export function validateQuotes(
       return turn === null ? [] : [{ ...e, turn }];
     }),
   }));
-  const topMoments = draft.topMoments.flatMap((m) => {
-    const turn = locate('topMoments', m.turn, m.youSaid, 'rep');
+  const moments = draft.moments.flatMap((m) => {
+    const turn = locate('moments', m.turn, m.quote, m.kind === 'missed' ? 'prospect' : 'rep');
     return turn === null ? [] : [{ ...m, turn }];
   });
   const objections = draft.objections.flatMap((o) => {
     const turn = locate('objections', o.turn, o.yourResponse, 'rep');
     return turn === null ? [] : [{ ...o, turn }];
   });
-  return { review: { ...draft, stages, topMoments, objections }, dropped };
+  return { review: { ...draft, stages, moments, objections }, dropped };
 }
 
 const clamp = (n: number, min: number, max: number) =>
   Math.min(max, Math.max(min, Math.round(Number.isFinite(n) ? n : min)));
 
+const trimmed = (lines: readonly string[], max: number) =>
+  lines
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, max);
+
 /**
  * The stored review: quotes validated, scores rounded into range, one stage
- * per rubric criterion in rubric order, at most three moments and strengths.
+ * per rubric criterion in rubric order, the walkthrough in turn order, and at
+ * most three strengths and priorities.
  */
 export function finalizeReview(
   draft: ReviewDraft,
@@ -120,6 +134,7 @@ export function finalizeReview(
             score: clamp(stage.score, 1, 5),
             evidence: stage.evidence.map((e) => ({ turn: e.turn, quote: e.quote.trim() })),
             feedback: stage.feedback.trim(),
+            nextTime: stage.nextTime.trim(),
           },
         ]
       : [];
@@ -131,12 +146,19 @@ export function finalizeReview(
       overallScore: clamp(review.overallScore, 0, 100),
       summary: review.summary.trim(),
       stages,
-      topMoments: review.topMoments.slice(0, 3).map((m) => ({
-        turn: m.turn,
-        youSaid: m.youSaid.trim(),
-        tryInstead: m.tryInstead.trim(),
-        why: m.why.trim(),
-      })),
+      // A stable sort: moments on one turn keep the order Claude gave them.
+      moments: review.moments
+        .map((m) => ({
+          turn: m.turn,
+          kind: m.kind,
+          stage: m.stage,
+          quote: m.quote.trim(),
+          whatHappened: m.whatHappened.trim(),
+          sayInstead: m.kind === 'strong' ? '' : m.sayInstead.trim(),
+          why: m.why.trim(),
+        }))
+        .sort((a, b) => a.turn - b.turn)
+        .slice(0, MAX_MOMENTS),
       objections: review.objections.map((o) => ({
         turn: o.turn,
         objection: o.objection.trim(),
@@ -144,10 +166,8 @@ export function finalizeReview(
         score: clamp(o.score, 1, 5),
         better: o.better.trim(),
       })),
-      strengths: review.strengths
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .slice(0, 3),
+      strengths: trimmed(review.strengths, 3),
+      priorities: trimmed(review.priorities, 3),
       drill: { title: review.drill.title.trim(), instructions: review.drill.instructions.trim() },
       quotesDropped: dropped.length,
     },

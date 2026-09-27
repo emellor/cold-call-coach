@@ -67,6 +67,22 @@ describe('buildReviewSystemPrompt', () => {
     expect(prompt).toContain('must be copied word for word from the transcript turn it cites');
     expect(prompt).toContain("don't recount words, fillers or seconds");
   });
+
+  it('explains how she decides, with this scenario’s thresholds', () => {
+    expect(prompt).toContain(
+      'She started at interest 20 and patience 55. She agrees to a meeting only once her interest reaches 65, and hangs up when her patience falls to 0',
+    );
+    expect(prompt).toContain('The moves are facts of the simulation');
+  });
+
+  it('asks for coaching moment by moment: what went wrong, what it cost, what to say instead', () => {
+    expect(prompt).toContain('Walk through the call in turn order.');
+    expect(prompt).toContain(
+      'what went wrong, what it cost (what she said next, or how her interest or patience moved) and the exact words to say instead',
+    );
+    expect(prompt).toContain("don't use a private fact she hadn't revealed");
+    expect(prompt).toContain('No generic sales advice.');
+  });
 });
 
 describe('buildReviewUserPrompt', () => {
@@ -86,6 +102,45 @@ describe('buildReviewUserPrompt', () => {
     expect(prompt).toContain('[1] Prospect (0:00): Claire Hughes.');
     expect(prompt).toContain('[2] Rep (0:01): Hi, Sam here.');
     expect(prompt).toContain('[3] Prospect (1:05): Look, I [cut off by the rep]');
+  });
+
+  it('shows how she took each judged rep turn, under it', () => {
+    const judged = buildReviewUserPrompt({
+      ...input,
+      turns: [
+        input.turns[0]!,
+        {
+          ...input.turns[1]!,
+          reaction: {
+            interest: [20, 27.6],
+            patience: [55, 52],
+            reading: {
+              stage: 'discovery',
+              signals: ['askedOpenQuestion', 'followedUp', 'somethingNew'],
+              revealed: 'pain_1',
+            },
+          },
+        },
+        input.turns[2]!,
+        {
+          speaker: 'rep',
+          text: 'We do dashboards.',
+          startMs: 70_000,
+          interrupted: false,
+          reaction: { interest: [27.6, 27.6], patience: [52, 49], reading: null },
+        },
+      ],
+    });
+    expect(judged).toContain(
+      '[2] Rep (0:01): Hi, Sam here.\n    → her interest 20 → 28, patience 55 → 52. Judge: discovery; asked an open question, followed up on what she said, somethingNew; earned her private fact "Pain: energy bills up about 40% in two years and the board wants answers"\n[3] Prospect',
+    );
+    expect(judged).toContain(
+      "[4] Rep (1:10): We do dashboards.\n    → her interest 28 → 28, patience 52 → 49 (the live judge didn't read this turn)",
+    );
+    expect(judged).toContain(
+      "(time since she answered). Under a rep turn, → shows how her interest and patience moved after it, and the live judge's reading of it.\n[1] Prospect",
+    );
+    expect(prompt).not.toContain('Under a rep turn');
   });
 
   it('says nothing about controls on a call that used none', () => {
