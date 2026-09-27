@@ -10,6 +10,5 @@ coverage/
 .env.*
 !.env.example
 
-# The TalkingHead sample avatar (~37 MB, CC0): fetched by `pnpm avatar:fetch`.
-apps/web/public/avatars/*.glb
-apps/web/public/avatars/*.partial
+# Left over in old checkouts from the removed 3D avatar (~37 MB). Never commit it.
+apps/web/public/avatars/

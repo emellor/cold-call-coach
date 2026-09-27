@@ -14,11 +14,9 @@ services:
     plan: starter
     region: frankfurt
     # `corepack pnpm` runs the pnpm pinned in package.json (packageManager),
-    # with no global install. The avatar is fetched before the build so that
-    # Vite copies it into the SPA.
+    # with no global install.
     buildCommand: >-
       corepack pnpm install --frozen-lockfile &&
-      node scripts/fetch-avatar.mjs &&
       corepack pnpm --filter @ccc/web build
     preDeployCommand: node apps/api/src/db/migrate.ts
     startCommand: node apps/api/src/server.ts

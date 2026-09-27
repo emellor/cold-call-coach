@@ -1,13 +1,15 @@
 import type { ScenarioSummary } from '@ccc/contracts';
-import { RoomContext, StartAudio, useVoiceAssistant } from '@livekit/components-react';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import {
+  RoomAudioRenderer,
+  RoomContext,
+  StartAudio,
+  useVoiceAssistant,
+} from '@livekit/components-react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'wouter';
-import { AgentAudio } from '../avatar/AgentAudio.tsx';
 import { AppHeader } from '../components/AppHeader.tsx';
-import { AvatarStage } from '../avatar/AvatarStage.tsx';
-import { AvatarStore } from '../avatar/avatarStore.ts';
-import { DEV_MOODS, type Mood } from '../avatar/config.ts';
 import { CoachPanel } from '../call/CoachPanel.tsx';
+import { ProspectStage } from '../call/ProspectStage.tsx';
 import { AgentNotices, HintCard, NoticeLine, TipCard } from '../call/cards.tsx';
 import { DialButton, LiveControls, ModeChoice } from '../call/controls.tsx';
 import { type CallView, REVIEW_REDIRECT_MS, reviewPathAfter, useCall } from '../call/useCall.ts';
@@ -16,7 +18,7 @@ import { useShortcuts } from '../call/useShortcuts.ts';
 import { LatencyPanel } from '../components/LatencyPanel.tsx';
 import { Transcript } from '../components/Transcript.tsx';
 import { formatClock } from '../lib/stats.ts';
-import { usePersistentFlag, usePersistentString } from '../lib/usePersistentFlag.ts';
+import { usePersistentString } from '../lib/usePersistentString.ts';
 import { ScenarioPicker } from '../scenarios/ScenarioPicker.tsx';
 import { useScenarios } from '../scenarios/useScenarios.ts';
 
@@ -26,11 +28,6 @@ const isLive = (phase: CallView['phase']) =>
   phase === 'dialling' || phase === 'ringing' || phase === 'connected';
 
 export function CallPage() {
-  const [avatarStore] = useState(() => new AvatarStore());
-  const { controller } = useSyncExternalStore(avatarStore.subscribe, avatarStore.getSnapshot);
-  const [phoneMode, setPhoneMode] = usePersistentFlag('ccc.phoneMode', false);
-  const [lipSyncDelay, setLipSyncDelay] = usePersistentFlag('ccc.lipSyncDelay', false);
-  const [devMood, setDevMood] = useState<Mood>('neutral');
   const { view, dial, hangUp, togglePause, hint, dismissHint, rewind, dismissAgentNotice } =
     useCall();
   const [mode, setMode] = useCallMode();
@@ -63,29 +60,8 @@ export function CallPage() {
   const [dialled, setDialled] = useState<ScenarioSummary>();
   const shown = live ? dialled : selected;
 
-  useEffect(() => controller?.setLipSyncDelay(lipSyncDelay), [controller, lipSyncDelay]);
-  useEffect(() => controller?.setMood(devMood), [controller, devMood]);
-  // Her face follows her mood; each call starts neutral.
-  const mood = view.prospect?.mood ?? 'neutral';
-  useEffect(() => controller?.setMood(mood), [controller, mood]);
-
-  // If the browser held her audio back anyway (the avatar loaded after Dial, or a
-  // stricter autoplay policy), any click or key during the call starts it.
-  useEffect(() => {
-    if (!live || !controller) return;
-    const resume = () => controller.resumeAudio();
-    document.addEventListener('pointerdown', resume);
-    document.addEventListener('keydown', resume);
-    return () => {
-      document.removeEventListener('pointerdown', resume);
-      document.removeEventListener('keydown', resume);
-    };
-  }, [live, controller]);
-
   const onDial = () => {
     if (!selected) return;
-    // Inside the click: the avatar's audio context may only start from a user gesture.
-    controller?.resumeAudio();
     setDialled(selected);
     void dial({ scenarioId: selected.id, mode });
   };
@@ -97,9 +73,7 @@ export function CallPage() {
 
         <main className="grid flex-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_380px]">
           <section aria-label="Call" className="flex min-w-0 flex-col gap-3">
-            <AvatarStage
-              store={avatarStore}
-              phoneMode={phoneMode}
+            <ProspectStage
               name={shown?.prospect.name ?? 'Prospect'}
               role={shown ? `${shown.prospect.role}, ${shown.prospect.company}` : ''}
             >
@@ -158,7 +132,7 @@ export function CallPage() {
                   )}
                 </div>
               )}
-            </AvatarStage>
+            </ProspectStage>
             <AgentNotices notices={view.agentNotices} onDismiss={dismissAgentNotice} />
             {coached ? (
               <CoachPanel coach={view.coach} />
@@ -202,16 +176,7 @@ export function CallPage() {
           </aside>
         </main>
 
-        <footer className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 border-t border-slate-800 px-6 py-4">
-          <div className="flex flex-wrap items-center gap-4 text-sm text-slate-300">
-            <Toggle label="Phone mode" checked={phoneMode} onChange={setPhoneMode} />
-            <Toggle
-              label="Delay voice 0.1 s (lip sync)"
-              checked={lipSyncDelay}
-              onChange={setLipSyncDelay}
-            />
-          </div>
-
+        <footer className="flex justify-center border-t border-slate-800 px-6 py-4">
           <div className="flex flex-col items-center gap-2">
             {live ? (
               <LiveControls
@@ -232,26 +197,9 @@ export function CallPage() {
             )}
             {view.notice && <NoticeLine key={view.notice.id} notice={view.notice} />}
           </div>
-
-          <div className="flex justify-end">
-            {import.meta.env.DEV && (
-              <label className="flex items-center gap-2 text-xs text-slate-400">
-                Mood (dev)
-                <select
-                  value={devMood}
-                  onChange={(e) => setDevMood(e.target.value as Mood)}
-                  className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-slate-200"
-                >
-                  {DEV_MOODS.map((mood) => (
-                    <option key={mood}>{mood}</option>
-                  ))}
-                </select>
-              </label>
-            )}
-          </div>
         </footer>
 
-        {live && view.room && <AgentAudio controller={controller} />}
+        {live && view.room && <RoomAudioRenderer />}
         {live && view.room && (
           <StartAudio
             label="Click to allow audio"
@@ -260,20 +208,6 @@ export function CallPage() {
         )}
       </div>
     </RoomContext.Provider>
-  );
-}
-
-function Toggle(props: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
-  return (
-    <label className="flex cursor-pointer items-center gap-2">
-      <input
-        type="checkbox"
-        checked={props.checked}
-        onChange={(e) => props.onChange(e.target.checked)}
-        className="size-4 accent-sky-500"
-      />
-      {props.label}
-    </label>
   );
 }
 

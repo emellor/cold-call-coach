@@ -80,7 +80,7 @@ export function applyJudgement(
   return { turn, interest: clamp(interest), patience: clamp(patience), painsRevealed };
 }
 
-/** Her avatar's expression. */
+/** Her mood, published with her state. Nothing on the page shows it since the avatar went. */
 export function moodFor(state: ProspectState): Mood {
   if (state.patience < 25) return 'angry';
   if (state.interest >= 60) return 'happy';

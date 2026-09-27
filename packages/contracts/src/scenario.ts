@@ -83,7 +83,6 @@ export const ScenarioSpec = z.object({
   locale: z.string().regex(/^[a-z]{2}-[A-Z]{2}$/),
   prospect: ProspectSpec,
   voice: VoiceSpec,
-  avatar: z.object({ url: text, body: z.enum(['F', 'M']) }),
   state: StateSpec,
   winCondition: text,
   rubricId: text,

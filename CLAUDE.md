@@ -30,10 +30,6 @@ Before starting any milestone, read docs/PLAN.md and the matching prompt in docs
 - Code counts, Claude judges: metrics are computed in code, and review quotes are
   validated.
 
-**Assets**
-
-- Don't commit `mpfb.glb`, and don't use the non-CC0 sample avatars.
-
 **Workflow**
 
 - Work on a branch per milestone from `main`, e.g. `m1-voice-loop`.
@@ -269,7 +265,8 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
 
 - **Web.**
   - `useCall` shows **Reconnecting…** between `RoomEvent.Reconnecting` and `Reconnected`.
-  - During a call, any click or key resumes the avatar's audio context.
+  - Her voice plays through LiveKit's `RoomAudioRenderer`, and `StartAudio` offers **Click to
+    allow audio** when the browser holds sound back.
 - **Sign-in** (`apps/api/src/auth.ts`), only when `APP_PASSWORD` is set.
   - An `onRequest` hook answers 401 on every `/api/*` route except health and
     `/api/auth/*`. The `/internal/*` routes keep `x-internal-secret`.
@@ -311,20 +308,14 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
   - The commands were run locally in production mode; the Blueprint has never been
     applied on Render.
 
-## The avatar (apps/web/src/avatar)
+## The avatar (removed)
 
-- `AvatarController` wraps TalkingHead (3D) and HeadAudio (lip-sync from audio). The
-  prospect's LiveKit track is routed through TalkingHead's audio graph only: a muted
-  `<audio>` element touches the stream (Chrome won't process a remote stream otherwise),
-  and `RoomAudioRenderer` is not used, or she would play twice. It is the fallback only
-  when there is no controller (no WebGL).
-- `lipsyncModules: []`: HeadAudio drives the mouth, and TalkingHead's text lip-sync modules
-  are loaded by a runtime-computed import Vite's build can't follow.
-- Never call `head.stop()` to pause: it also suspends the audio context and silences her.
-  Phone mode and hidden tabs set `head.isRunning = false` and stop HeadAudio instead.
-- The 3D code is a lazy chunk loaded by `AvatarStore`; the call UI works without it.
-  In development the controller is on `window.__cccAvatar` for console experiments.
-- The model is fetched by `pnpm avatar:fetch` (pinned commit + SHA-256) and git-ignored.
+- The 3D avatar (TalkingHead with HeadAudio lip-sync, M2) was removed at the owner's request:
+  its quality wasn't worth having. Calls are voice only; the page shows her initials.
+- Her mood is still computed (`moodFor`) and published in `prospect.state`, and `useCall`
+  keeps it, for any future visual. Nothing on the page shows it.
+- `scripts/fetch-avatar.mjs` is a stand-in that does nothing, kept only because the deployed
+  web service's build command still runs it. Delete it once that step is gone from Render.
 
 ## Tests
 

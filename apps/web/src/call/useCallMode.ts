@@ -1,5 +1,5 @@
 import { CallMode } from '@ccc/contracts';
-import { usePersistentString } from '../lib/usePersistentFlag.ts';
+import { usePersistentString } from '../lib/usePersistentString.ts';
 
 /** The mode for the next call, remembered between visits. Coached unless chosen. */
 export function useCallMode(): [CallMode, (mode: CallMode) => void] {

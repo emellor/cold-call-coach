@@ -49,7 +49,7 @@ describe('serving the built SPA', () => {
   });
 
   it('404s a missing file instead of answering with index.html', async () => {
-    const res = await app.inject({ method: 'GET', url: '/avatars/mpfb.glb' });
+    const res = await app.inject({ method: 'GET', url: '/images/missing.png' });
     expect(res.statusCode).toBe(404);
   });
 

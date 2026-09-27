@@ -34,7 +34,6 @@
     "speed": "normal",
     "hint": "Crisp, confident British woman in her forties; neutral southern English"
   },
-  "avatar": { "url": "/avatars/mpfb.glb", "body": "F" },
   "state": {
     "interest": 20,
     "patience": 55,
