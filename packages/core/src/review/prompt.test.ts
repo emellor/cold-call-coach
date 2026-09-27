@@ -96,7 +96,7 @@ describe('buildReviewUserPrompt', () => {
     );
   });
 
-  it('lists the pauses, hints and rewinds, without marking the rep down for them', () => {
+  it('lists the pauses, uses of Get help and rewinds, without marking the rep down for them', () => {
     const withControls = buildReviewUserPrompt({
       ...input,
       controls: {
@@ -108,7 +108,7 @@ describe('buildReviewUserPrompt', () => {
     });
     expect(withControls).toContain("don't mark the rep down for using them");
     expect(withControls).toContain('- Paused the call 2 times (41 s in all).');
-    expect(withControls).toContain('- Asked for 1 hint.');
+    expect(withControls).toContain('- Pressed Get help 1 time (it suggests the next line to say).');
     expect(withControls).toContain(
       '- Rewound: took back "Is now a bad time?" and retook it; the retake is turn 2.',
     );

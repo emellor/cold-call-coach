@@ -149,7 +149,7 @@ export function formatReport(
     const cache = [
       cacheLine('Prospect', g.cache.prospect),
       cacheLine('Judge', g.cache.judge),
-      cacheLine('Hint', g.cache.hint),
+      cacheLine('Get help', g.cache.hint),
     ].filter((l): l is string => l !== null);
     const noCache = g.claudeRequests
       ? '- No prompt-cache counts recorded (calls logged before M6).'

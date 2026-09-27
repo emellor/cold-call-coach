@@ -109,7 +109,11 @@ function controlLines(used: ControlsUsed | undefined): string {
       `- Paused the call ${times(used.pauses, 'time')}${secs > 0 ? ` (${secs} s in all)` : ''}.`,
     );
   }
-  if (used.hints > 0) lines.push(`- Asked for ${times(used.hints, 'hint')}.`);
+  if (used.hints > 0) {
+    lines.push(
+      `- Pressed Get help ${times(used.hints, 'time')} (it suggests the next line to say).`,
+    );
+  }
   for (const r of used.rewinds) {
     lines.push(
       `- Rewound: took back "${r.tookBack}" and retook it; the retake is turn ${r.beforeTurn}.`,
