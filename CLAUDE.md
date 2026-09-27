@@ -395,8 +395,6 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
   its quality wasn't worth having. Calls are voice only; the page shows her initials.
 - Her mood is still computed (`moodFor`) and published in `prospect.state`, and `useCall`
   keeps it, for any future visual. Nothing on the page shows it.
-- `scripts/fetch-avatar.mjs` is a stand-in that does nothing, kept only because the deployed
-  web service's build command still runs it. Delete it once that step is gone from Render.
 
 ## Tests
 

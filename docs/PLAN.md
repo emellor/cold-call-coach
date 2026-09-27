@@ -95,7 +95,7 @@ cold-call-coach/
 │  ├─ product.json    what you sell
 │  ├─ *.json          scenario files
 │  └─ rubrics/cold-call-v1.json
-├─ scripts/           fetch-avatar.mjs, simulate-call.ts
+├─ scripts/           simulate-call.ts, latency-report.ts
 └─ docs/              PLAN.md (this file), PROMPTS.md
 ```
 
