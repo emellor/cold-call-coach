@@ -5,6 +5,8 @@ import type {
   CallOutcome,
   CallPhase,
   DebugLatencyPayload,
+  DemoOutcome,
+  DemoStatus,
   Difficulty,
   EventKind,
   ReviewStatus,
@@ -13,12 +15,14 @@ import type {
 import {
   bigint,
   boolean,
+  customType,
   index,
   integer,
   jsonb,
   numeric,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   uuid,
@@ -131,4 +135,52 @@ export const scenarios = pgTable(
     archivedAt: timestamptz('archived_at'),
   },
   (t) => [primaryKey({ columns: [t.id, t.version] })],
+);
+
+/** Postgres `bytea`, which node-postgres reads as a Buffer. */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => 'bytea' });
+
+export const demos = pgTable(
+  'demos',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    batchId: uuid('batch_id').notNull(),
+    position: integer('position').notNull(),
+    scenarioId: text('scenario_id').notNull(),
+    scenarioVersion: integer('scenario_version'),
+    angle: text('angle').notNull(),
+    status: text('status').$type<DemoStatus>().notNull().default('queued'),
+    attempts: integer('attempts').notNull().default(0),
+    claimedAt: timestamptz('claimed_at'),
+    error: text('error'),
+    title: text('title'),
+    summary: text('summary'),
+    lessons: jsonb('lessons').$type<string[]>(),
+    outcome: text('outcome').$type<DemoOutcome>(),
+    outcomeDetail: text('outcome_detail'),
+    durationMs: integer('duration_ms'),
+    costUsd: usd('cost_usd'),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('demos_waiting_idx').on(t.createdAt, t.position)],
+);
+
+export const demoTurns = pgTable(
+  'demo_turns',
+  {
+    demoId: uuid('demo_id')
+      .notNull()
+      .references(() => demos.id, { onDelete: 'cascade' }),
+    idx: integer('idx').notNull(),
+    speaker: text('speaker').$type<Speaker>().notNull(),
+    text: text('text').notNull(),
+    technique: text('technique'),
+    note: text('note'),
+    interest: real('interest'),
+    patience: real('patience'),
+    audio: bytea('audio'),
+    audioMs: integer('audio_ms'),
+  },
+  (t) => [primaryKey({ columns: [t.demoId, t.idx] })],
 );

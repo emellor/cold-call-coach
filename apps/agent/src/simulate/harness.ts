@@ -1,33 +1,26 @@
-// The simulate-call harness: plays a scripted rep against the real prospect
+// The simulation harness: plays a scripted rep against the real prospect
 // prompt, judge and state engine, text only. The same ProspectBrain, tools
 // and request builders as a live call; only the voice pipeline is missing.
+// scripts/simulate-call.ts runs it by hand, and the demo worker (demos/) runs
+// it to write the demo calls, which is why it lives in the agent.
 import type { ProductSpec, ProspectState, ScenarioSpec } from '@ccc/contracts';
 import {
   type Effort,
+  type TokenUsage,
   type TranscriptTurn,
   buildProspectMessages,
   buildProspectSystemPrompt,
   modelCapabilities,
   withStateNote,
 } from '@ccc/core';
-import type {
-  BetaMessage,
-  MessageCreateParamsNonStreaming,
-} from '../../apps/agent/src/claude/client.ts';
-import { prospectRequest } from '../../apps/agent/src/claude/requests.ts';
-import {
-  type StreamingMessages,
-  claudeTextStream,
-} from '../../apps/agent/src/claude/textStream.ts';
-import { type ParsingMessages, claudeJudge } from '../../apps/agent/src/judge/judge.ts';
-import { actOnReply } from '../../apps/agent/src/prospect/actions.ts';
-import { type JudgedTurn, ProspectBrain } from '../../apps/agent/src/prospect/brain.ts';
-import type { Reply } from '../../apps/agent/src/prospect/replies.ts';
-import {
-  type ProspectAction,
-  actionsFromMessage,
-  closingLine,
-} from '../../apps/agent/src/prospect/tools.ts';
+import type { BetaMessage, MessageCreateParamsNonStreaming } from '../claude/client.ts';
+import { prospectRequest } from '../claude/requests.ts';
+import { type StreamingMessages, claudeTextStream } from '../claude/textStream.ts';
+import { type ParsingMessages, claudeJudge, usageOf } from '../judge/judge.ts';
+import { actOnReply } from '../prospect/actions.ts';
+import { type JudgedTurn, ProspectBrain } from '../prospect/brain.ts';
+import type { Reply } from '../prospect/replies.ts';
+import { type ProspectAction, actionsFromMessage, closingLine } from '../prospect/tools.ts';
 import type { RepPersona } from './personas.ts';
 
 /** The slice of `client.beta.messages` the simulation uses; fakes satisfy it in tests. */
@@ -44,6 +37,9 @@ export interface SimModels {
 }
 
 export type SimOutcome = 'meeting_booked' | 'hung_up_by_prospect' | 'no_decision';
+
+/** Which of the simulation's Claude calls some usage was for. */
+export type SimLane = 'rep' | 'prospect' | 'judge';
 
 export interface SimTurn {
   turn: number;
@@ -117,8 +113,10 @@ export async function simulateCall(options: {
   models: SimModels;
   maxTurns: number;
   onTurn?: (turn: SimTurn) => void;
+  /** Every answered Claude call's usage, by lane and the model that answered (for pricing). */
+  onUsage?: (lane: SimLane, model: string, usage: TokenUsage) => void;
 }): Promise<SimResult> {
-  const { scenario, product, persona, messages, models, maxTurns, onTurn } = options;
+  const { scenario, product, persona, messages, models, maxTurns, onTurn, onUsage } = options;
   const usage: Usage = { calls: 0, inputTokens: 0, cacheReadInputTokens: 0, outputTokens: 0 };
   const usageLogger = {
     info: (obj: object, msg: string) => {
@@ -144,6 +142,7 @@ export async function simulateCall(options: {
       model: models.coach,
       effort: models.coachEffort,
       logger: usageLogger,
+      onUsage: (model, u) => onUsage?.('judge', model, u),
     }),
     logger: usageLogger,
   });
@@ -183,6 +182,7 @@ export async function simulateCall(options: {
       ...(repCaps.effort ? { output_config: { effort: 'low' as const } } : {}),
     });
     addUsage(usage, repReply);
+    onUsage?.('rep', repReply.model, usageOf(repReply));
     const rep = cleanRepLine(
       repReply.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join(' '),
     );
@@ -211,6 +211,7 @@ export async function simulateCall(options: {
         }),
         onComplete: (message) => {
           addUsage(usage, message);
+          onUsage?.('prospect', message.model, usageOf(message));
           reply.actions = actionsFromMessage(message);
         },
         closingText: (_m, spoke) => (spoke ? undefined : closingLine(reply.actions)),

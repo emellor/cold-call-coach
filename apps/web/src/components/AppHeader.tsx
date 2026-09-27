@@ -3,7 +3,7 @@ import { useAuth } from '../lib/auth.ts';
 import { SystemStatus } from './SystemStatus.tsx';
 
 function NavLink({ href, label }: { href: string; label: string }) {
-  const [active] = useRoute(href === '/calls' ? '/calls/*?' : href);
+  const [active] = useRoute(href === '/' ? href : `${href}/*?`);
   return (
     <Link
       href={href}
@@ -21,12 +21,14 @@ function NavLink({ href, label }: { href: string; label: string }) {
 export function AppHeader() {
   const { required, signOut } = useAuth();
   return (
-    <header className="flex items-center justify-between gap-4 border-b border-slate-800 px-6 py-3">
-      <div className="flex items-center gap-6">
-        <h1 className="text-lg font-semibold tracking-tight">Cold Call Coach</h1>
+    // Wraps on a phone: the status drops below the name and the links rather than off the edge.
+    <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-slate-800 px-4 py-3 sm:px-6">
+      <div className="flex items-center gap-4 sm:gap-6">
+        <h1 className="text-lg font-semibold tracking-tight whitespace-nowrap">Cold Call Coach</h1>
         <nav aria-label="Main" className="flex gap-1">
           <NavLink href="/" label="Call" />
           <NavLink href="/calls" label="History" />
+          <NavLink href="/demos" label="Demos" />
         </nav>
       </div>
       <div className="flex items-center gap-4">

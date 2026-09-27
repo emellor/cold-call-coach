@@ -21,6 +21,7 @@ import { ReviewQueue } from './review/queue.ts';
 import { type Reviewer, claudeReviewer } from './review/reviewer.ts';
 import { registerCallLogRoutes } from './routes/callLog.ts';
 import { registerCallRoutes } from './routes/calls.ts';
+import { registerDemoRoutes } from './routes/demos.ts';
 import { registerHealthRoutes } from './routes/health.ts';
 import { registerScenarioRoutes } from './routes/scenarios.ts';
 import { registerWeb } from './web.ts';
@@ -154,6 +155,7 @@ export async function buildApp(
   );
   registerCallRoutes(app, context, queue);
   registerCallLogRoutes(app, context, queue);
+  registerDemoRoutes(app, context);
   await registerWeb(app, options.webDistDir ?? webDistDir);
 
   return app;

@@ -107,6 +107,10 @@ services:
         value: claude-opus-5
       - key: COACH_EFFORT
         value: low
+      # Demo calls: the expert rep and the notes on its lines. Its voice is the
+      # first British man in Cartesia's library unless DEMO_REP_VOICE_ID is set.
+      - key: DEMO_MODEL
+        value: claude-opus-5
 
 databases:
   - name: cold-call-coach-db

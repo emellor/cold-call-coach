@@ -172,6 +172,31 @@ it can't find, so each criticism uses your actual words. **History** lists every
 with its outcome, score and length. A review needs `ANTHROPIC_API_KEY` on the API. Without
 one, the page says so, and **Try again** reruns the review once the key is set.
 
+## Demo calls
+
+**Demos** has calls to listen to: an expert rep, played by Claude, calls your prospects
+and books the meeting, taking a different approach each time. Examples: a compliance
+deadline, a peer story, an upfront agreement, straight talk about it being a cold call.
+Every line the rep says comes with the technique behind it and why it works at that
+point, and each call has a summary and the patterns to copy. Press **Play the call**
+and follow along: the line playing is highlighted, and **Play from here** starts
+anywhere.
+
+**Generate 20 demo calls** queues a batch across the prospects in the picker, yours
+included. The voice agent writes them in the background, one at a time:
+
+1. The expert rep calls her through the same prompt, judge and state engine as a real
+   call, so she pushes back and hangs up as she would on you. If she hangs up, it has
+   one more try.
+2. Claude notes every rep line.
+3. Cartesia voices both sides.
+
+Each takes two or three minutes and costs about $0.60–0.80 in Claude and Cartesia usage,
+so a batch of 20 comes to $12–16. The page asks before it starts, shows progress, and
+**Retry** requeues any that failed. The agent writes them only while it's running;
+`DEMO_WORKER=off` stops it. `DEMO_MODEL` plays the rep, and `DEMO_REP_VOICE_ID` sets its
+voice, which otherwise is the first British man in Cartesia's library.
+
 ## Cost per call
 
 Every call is priced from what it used. The review page's **Cost** section shows it line

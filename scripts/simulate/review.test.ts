@@ -3,7 +3,7 @@ import { type JudgeSignals, ProductSpec, RubricSpec, ScenarioSpec } from '@ccc/c
 import { describe, expect, it } from 'vitest';
 import type { BetaRawMessageStreamEvent } from '../../apps/agent/src/claude/client.ts';
 import type { StreamingMessages } from '../../apps/api/src/review/reviewer.ts';
-import type { SimResult } from './harness.ts';
+import type { SimResult } from '../../apps/agent/src/simulate/harness.ts';
 import { readPriceTable } from '../../apps/api/src/prices.ts';
 import { reviewSimulatedCall, timedTurns } from './review.ts';
 
