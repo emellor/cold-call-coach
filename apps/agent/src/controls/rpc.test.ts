@@ -31,12 +31,13 @@ describe('registerControls', () => {
   it('answers the rep with the JSON its contract describes', async () => {
     const { call } = registered({
       pause: () => ({ ok: true }),
-      hint: () => Promise.resolve({ suggestions: ['One?', 'Two?', 'Three?'] }),
+      hint: () => Promise.resolve({ say: 'Got a minute?', why: 'Opener: ask permission.' }),
       rewind: () => Promise.resolve({ ok: false, reason: 'Nothing to take back.' }),
     });
     expect(JSON.parse(await call('call.pause'))).toEqual({ ok: true });
     expect(JSON.parse(await call('call.hint'))).toEqual({
-      suggestions: ['One?', 'Two?', 'Three?'],
+      say: 'Got a minute?',
+      why: 'Opener: ask permission.',
     });
     expect(JSON.parse(await call('call.rewind'))).toEqual({
       ok: false,
@@ -56,7 +57,7 @@ describe('registerControls', () => {
 
   it('sends a control’s own failure back as it is, and hides anything else', async () => {
     const { call } = registered({
-      hint: () => Promise.reject(new ControlError('Hint is off in exam mode.')),
+      hint: () => Promise.reject(new ControlError('Help is off in exam mode.')),
       rewind: () => Promise.reject(new Error('internal detail')),
       pause: () => ({ ok: 'yes' }) as never, // breaks its contract
     });
@@ -64,7 +65,7 @@ describe('registerControls', () => {
     expect(refused).toBeInstanceOf(RpcError);
     expect(refused).toMatchObject({
       code: RpcError.ErrorCode.APPLICATION_ERROR,
-      message: 'Hint is off in exam mode.',
+      message: 'Help is off in exam mode.',
     });
     await expect(call('call.rewind')).rejects.toThrow('The agent could not do that. Try again.');
     await expect(call('call.pause')).rejects.toThrow('The agent could not do that. Try again.');

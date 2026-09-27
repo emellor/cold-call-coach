@@ -1,8 +1,9 @@
-// The Hint button (PLAN.md §8.3): one quick structured-output Claude call for
-// three lines the rep could say next, on the coach's model. It runs on the
-// RPC path, never the prospect's: she keeps talking while it thinks.
-import type { HintDraft } from '@ccc/contracts';
-import { type Effort, type TokenUsage, hintSuggestions } from '@ccc/core';
+// The Get help button (PLAN.md §8.3, where it was the Hint): one quick
+// structured-output Claude call for the words the rep should say next, why, and a
+// follow-up if she pushes back, on the coach's model. It runs on the RPC path,
+// never the prospect's: she keeps talking while it thinks.
+import type { HintDraft, HintResponse } from '@ccc/contracts';
+import { type Effort, type TokenUsage, helpFrom } from '@ccc/core';
 import { hintRequest } from '../claude/requests.ts';
 import { CLAUDE_TIMED_OUT, CLAUDE_UNREACHABLE, describeClaudeFailure } from '../failures.ts';
 import { type ParsingMessages, usageOf } from '../judge/judge.ts';
@@ -21,14 +22,14 @@ export interface HintLogger {
 export type HintSource = (prompt: {
   system: string;
   user: string;
-}) => Promise<{ suggestions: string[]; ms: number }>;
+}) => Promise<HintResponse & { ms: number }>;
 
-/** What a failed hint tells the rep. */
+/** What failed help tells the rep. */
 export function describeHintError(error: unknown): string {
   if (error instanceof HintError) return error.message;
   const failure = describeClaudeFailure(error);
-  if (failure === CLAUDE_TIMED_OUT) return 'The hint took too long. Try again.';
-  if (failure === CLAUDE_UNREACHABLE) return "Couldn't get a hint. Try again.";
+  if (failure === CLAUDE_TIMED_OUT) return 'Help took too long. Try again.';
+  if (failure === CLAUDE_UNREACHABLE) return "Couldn't get help. Try again.";
   return failure;
 }
 
@@ -62,12 +63,11 @@ export function claudeHints(options: {
       'claude usage',
     );
     if (message.stop_reason === 'refusal') {
-      throw new HintError('The coach declined to suggest lines here.');
+      throw new HintError('The coach declined to help here.');
     }
     // parse() has already validated it against the HintDraft schema.
-    const draft = message.parsed_output as HintDraft | null;
-    const suggestions = hintSuggestions(draft?.suggestions ?? []);
-    if (!suggestions.length) throw new HintError('The hint came back empty. Try again.');
-    return { suggestions, ms };
+    const help = helpFrom(message.parsed_output as HintDraft | null);
+    if (!help) throw new HintError('Help came back empty. Try again.');
+    return { ...help, ms };
   };
 }

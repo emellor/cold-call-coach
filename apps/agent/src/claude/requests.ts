@@ -102,8 +102,9 @@ export function judgeRequest(input: {
 }
 
 /**
- * The Hint button's request (PLAN.md §8.3): three lines as structured output,
- * on the coach's model and effort. The system prompt is fixed for the call.
+ * The Get help button's request (PLAN.md §8.3, where it was the Hint): what to
+ * say next, why, and a follow-up, as structured output on the coach's model and
+ * effort. The system prompt is fixed for the call.
  */
 export function hintRequest(input: {
   model: string;

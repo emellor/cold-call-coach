@@ -33,7 +33,7 @@ export function CallPage() {
   const [mode, setMode] = useCallMode();
   const live = isLive(view.phase);
   const coached = live && view.mode === 'coached';
-  // Pause, hint and rewind need her on the line; hanging up works from the first ring.
+  // Pause, Get help and rewind need her on the line; hanging up works from the first ring.
   const coaching = coached && view.phase === 'connected';
 
   useShortcuts({
@@ -73,66 +73,70 @@ export function CallPage() {
 
         <main className="grid flex-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_380px]">
           <section aria-label="Call" className="flex min-w-0 flex-col gap-3">
-            <ProspectStage
-              name={shown?.prospect.name ?? 'Prospect'}
-              role={shown ? `${shown.prospect.role}, ${shown.prospect.company}` : ''}
-            >
-              <div className="absolute top-3 left-3 flex items-center gap-2">
-                <StatusChip view={view} prospect={firstName(shown)} />
-                {live && view.mode === 'exam' && (
-                  <p className="rounded-full bg-slate-950/70 px-3 py-1 text-sm text-slate-300 backdrop-blur-sm">
-                    Exam: no live help
+            <div className="relative">
+              <ProspectStage
+                name={shown?.prospect.name ?? 'Prospect'}
+                role={shown ? `${shown.prospect.role}, ${shown.prospect.company}` : ''}
+              >
+                <div className="absolute top-3 left-3 flex items-center gap-2">
+                  <StatusChip view={view} prospect={firstName(shown)} />
+                  {live && view.mode === 'exam' && (
+                    <p className="rounded-full bg-slate-950/70 px-3 py-1 text-sm text-slate-300 backdrop-blur-sm">
+                      Exam: no live help
+                    </p>
+                  )}
+                </div>
+                {live && view.paused && (
+                  <div
+                    role="status"
+                    className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-slate-950/90 text-center"
+                  >
+                    <p className="text-lg font-medium">Paused</p>
+                    <p className="text-sm text-slate-300">
+                      Your mic is off and {firstName(shown)} is waiting. Press Space to resume.
+                    </p>
+                  </div>
+                )}
+                {coached && view.coach.tip && (
+                  <div className="absolute right-3 bottom-3">
+                    <TipCard key={view.coach.tip.id} tip={view.coach.tip} />
+                  </div>
+                )}
+                {live && view.meeting !== undefined && (
+                  <p
+                    role="status"
+                    className="absolute top-3 right-3 rounded-full bg-emerald-600/90 px-3 py-1 text-sm font-medium text-white"
+                  >
+                    ✓ Meeting booked{view.meeting && ` · ${view.meeting}`}
                   </p>
                 )}
-              </div>
-              {live && view.paused && (
-                <div
-                  role="status"
-                  className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-slate-950/90 text-center"
-                >
-                  <p className="text-lg font-medium">Paused</p>
-                  <p className="text-sm text-slate-300">
-                    Your mic is off and {firstName(shown)} is waiting. Press Space to resume.
-                  </p>
-                </div>
-              )}
-              {coached && view.coach.tip && (
-                <div className="absolute right-3 bottom-3">
-                  <TipCard key={view.coach.tip.id} tip={view.coach.tip} />
-                </div>
-              )}
-              {/* Over the stage, so the controls never move: the rep may pause, then ask. */}
+                {view.phase === 'ended' && (
+                  <div
+                    role="alert"
+                    className="absolute inset-x-0 top-1/2 mx-auto w-fit max-w-md -translate-y-1/2 rounded-lg bg-slate-950/85 px-5 py-3 text-center"
+                  >
+                    <p className="font-medium">Call ended</p>
+                    {view.message && <p className="mt-1 text-sm text-slate-300">{view.message}</p>}
+                    {reviewPath && (
+                      <Link
+                        href={reviewPath}
+                        className="mt-2 inline-block text-sm text-sky-300 underline"
+                      >
+                        See your review
+                      </Link>
+                    )}
+                  </div>
+                )}
+              </ProspectStage>
+              {/* Get help: over the stage, so the controls never move (the rep may pause, then
+                ask), and scrolling rather than running past its bottom edge. A phone's stage is
+                too short to read it in, so there it sits below instead. */}
               {coached && view.hint && (
-                <div className="absolute top-14 right-3 w-[min(28rem,calc(100%-1.5rem))]">
+                <div className="mt-3 sm:pointer-events-none sm:absolute sm:top-14 sm:right-3 sm:bottom-3 sm:mt-0 sm:w-[min(28rem,calc(100%-1.5rem))]">
                   <HintCard hint={view.hint} onClose={dismissHint} />
                 </div>
               )}
-              {live && view.meeting !== undefined && (
-                <p
-                  role="status"
-                  className="absolute top-3 right-3 rounded-full bg-emerald-600/90 px-3 py-1 text-sm font-medium text-white"
-                >
-                  ✓ Meeting booked{view.meeting && ` · ${view.meeting}`}
-                </p>
-              )}
-              {view.phase === 'ended' && (
-                <div
-                  role="alert"
-                  className="absolute inset-x-0 top-1/2 mx-auto w-fit max-w-md -translate-y-1/2 rounded-lg bg-slate-950/85 px-5 py-3 text-center"
-                >
-                  <p className="font-medium">Call ended</p>
-                  {view.message && <p className="mt-1 text-sm text-slate-300">{view.message}</p>}
-                  {reviewPath && (
-                    <Link
-                      href={reviewPath}
-                      className="mt-2 inline-block text-sm text-sky-300 underline"
-                    >
-                      See your review
-                    </Link>
-                  )}
-                </div>
-              )}
-            </ProspectStage>
+            </div>
             <AgentNotices notices={view.agentNotices} onDismiss={dismissAgentNotice} />
             {coached ? (
               <CoachPanel coach={view.coach} />

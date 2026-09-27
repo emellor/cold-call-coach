@@ -48,7 +48,7 @@ describe('callAgent', () => {
   });
 
   it('rejects an answer that breaks the contract, or no agent to ask', async () => {
-    const bad = roomWith(() => Promise.resolve('{"suggestions":[]}'));
+    const bad = roomWith(() => Promise.resolve('{"suggestions":["One?"]}'));
     await expect(callAgent(bad.room, RpcMethods.hint)).rejects.toBeInstanceOf(AgentRpcError);
     const alone = roomWith(() => Promise.resolve('{"ok":true}'), []);
     await expect(callAgent(alone.room, RpcMethods.pause)).rejects.toThrow(
@@ -59,10 +59,10 @@ describe('callAgent', () => {
   it('passes the agent’s own refusal through as it is', async () => {
     const { room } = roomWith(() =>
       Promise.reject(
-        new RpcError(RpcError.ErrorCode.APPLICATION_ERROR, 'Hint is off in exam mode.'),
+        new RpcError(RpcError.ErrorCode.APPLICATION_ERROR, 'Help is off in exam mode.'),
       ),
     );
-    await expect(callAgent(room, RpcMethods.hint)).rejects.toThrow('Hint is off in exam mode.');
+    await expect(callAgent(room, RpcMethods.hint)).rejects.toThrow('Help is off in exam mode.');
   });
 });
 

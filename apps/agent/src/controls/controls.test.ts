@@ -26,6 +26,12 @@ class FakeAgent {
   }
 }
 
+const HELP = {
+  say: 'What does month end look like for you?',
+  why: 'Discovery: an open question about her process.',
+  ifPushback: 'Fair enough. What would make ten minutes worth it?',
+};
+
 const TAKEN: RewindEventPayload = {
   beforeTurn: 2,
   tookBack: 'Can I send you a brochure?',
@@ -63,9 +69,7 @@ function setup(
   };
   const coach = { paused: vi.fn(), resumed: vi.fn(), rewound: vi.fn(), turnsChanged: vi.fn() };
   const controller = { phase: options.phase ?? 'connected', end: vi.fn(() => Promise.resolve()) };
-  const hints = vi.fn<CallControlsDeps['hints']>(() =>
-    Promise.resolve({ suggestions: ['One?', 'Two?', 'Three?'], ms: 1_400 }),
-  );
+  const hints = vi.fn<CallControlsDeps['hints']>(() => Promise.resolve({ ...HELP, ms: 1_400 }));
   const latency = { rewound: vi.fn() };
   const rewindLog = vi.fn(() => TAKEN);
   const deps: CallControlsDeps = {
@@ -142,12 +146,12 @@ describe('CallControls: pause and resume', () => {
   });
 });
 
-describe('CallControls: hint', () => {
-  it('returns three lines and logs them', async () => {
+describe('CallControls: hint (Get help)', () => {
+  it('returns what to say and why, and logs it', async () => {
     const { controls, hints, events } = setup();
-    await expect(controls.hint()).resolves.toEqual({ suggestions: ['One?', 'Two?', 'Three?'] });
+    await expect(controls.hint()).resolves.toEqual(HELP);
     expect(hints).toHaveBeenCalledWith({ system: 'You coach.', user: 'Rep: hi' });
-    expect(events).toEqual([['hint', { suggestions: ['One?', 'Two?', 'Three?'], ms: 1_400 }]]);
+    expect(events).toEqual([['hint', { ...HELP, ms: 1_400 }]]);
   });
 
   it('shares one Claude call between presses while it is on its way', async () => {
@@ -161,14 +165,14 @@ describe('CallControls: hint', () => {
 
   it('fails with words the rep can read', async () => {
     const failing = setup();
-    failing.hints.mockRejectedValueOnce(new HintError('The hint came back empty. Try again.'));
+    failing.hints.mockRejectedValueOnce(new HintError('Help came back empty. Try again.'));
     await expect(failing.controls.hint()).rejects.toThrow(
-      new ControlError('The hint came back empty. Try again.'),
+      new ControlError('Help came back empty. Try again.'),
     );
     failing.hints.mockRejectedValueOnce(new Error('socket hang up'));
-    await expect(failing.controls.hint()).rejects.toThrow("Couldn't get a hint. Try again.");
+    await expect(failing.controls.hint()).rejects.toThrow("Couldn't get help. Try again.");
     await expect(setup({ mode: 'exam' }).controls.hint()).rejects.toThrow(
-      'Hint is off in exam mode.',
+      'Help is off in exam mode.',
     );
   });
 });

@@ -440,7 +440,7 @@ describe('useCall: the controls', () => {
     expect(mic()).toEqual([true, false, true]);
   });
 
-  it('shows a hint: loading, then three lines, or the reason it failed', async () => {
+  it('shows help: loading, then what to say, or the reason it failed', async () => {
     let release = (_text: string) => {};
     fakes.FakeRoom.answers = {
       'call.hint': () =>
@@ -455,21 +455,21 @@ describe('useCall: the controls', () => {
     });
     expect(result.current.view.hint).toEqual({ status: 'loading' });
     await act(async () => {
-      release(JSON.stringify({ suggestions: ['One?', 'Two?', 'Three?'] }));
+      release(JSON.stringify({ say: 'What drives that?', why: 'Discovery: follow up.' }));
       await pending;
     });
     expect(result.current.view.hint).toEqual({
       status: 'ready',
-      suggestions: ['One?', 'Two?', 'Three?'],
+      help: { say: 'What drives that?', why: 'Discovery: follow up.' },
     });
     act(() => result.current.dismissHint());
     expect(result.current.view.hint).toBeUndefined();
 
-    fakes.FakeRoom.answers['call.hint'] = refuse('The hint took too long. Try again.');
+    fakes.FakeRoom.answers['call.hint'] = refuse('Help took too long. Try again.');
     await act(() => result.current.hint());
     expect(result.current.view.hint).toEqual({
       status: 'error',
-      message: 'The hint took too long. Try again.',
+      message: 'Help took too long. Try again.',
     });
   });
 

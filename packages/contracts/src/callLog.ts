@@ -65,9 +65,12 @@ export type LoggedEvent = z.infer<typeof LoggedEvent>;
 export const ResumeEventPayload = z.object({ pausedMs: ms });
 export type ResumeEventPayload = z.infer<typeof ResumeEventPayload>;
 
+/** Get help's answer, as the rep saw it. Calls logged before it existed carry `suggestions`. */
 export const HintEventPayload = z.object({
-  suggestions: z.array(z.string()),
-  /** How long the hint took to come back. */
+  say: z.string(),
+  why: z.string(),
+  ifPushback: z.string().optional(),
+  /** How long the help took to come back. */
   ms,
 });
 export type HintEventPayload = z.infer<typeof HintEventPayload>;

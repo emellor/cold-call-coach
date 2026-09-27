@@ -1,5 +1,5 @@
 // The call page's buttons: the mode choice before dialling, and during a
-// call Pause/Resume (Space), Hint (H), Rewind (R) and Hang up (Esc).
+// call Pause/Resume (Space), Get help (H), Rewind (R) and Hang up (Esc).
 import type { CallMode } from '@ccc/contracts';
 import type { ReactNode } from 'react';
 import {
@@ -12,7 +12,7 @@ import {
 } from '../components/icons.tsx';
 
 const MODES: Array<{ mode: CallMode; label: string; detail: string }> = [
-  { mode: 'coached', label: 'Coached', detail: 'Live panel, tips, pause, hints and rewind' },
+  { mode: 'coached', label: 'Coached', detail: 'Live panel, tips, pause, Get help and rewind' },
   { mode: 'exam', label: 'Exam', detail: 'No live help: the review only' },
 ];
 
@@ -108,7 +108,7 @@ export function DialButton(props: { onClick: () => void; disabled: boolean; agai
 }
 
 export function LiveControls(props: {
-  /** Pause, hint and rewind: coached calls, once she has answered. */
+  /** Pause, Get help and rewind: coached calls, once she has answered. */
   coaching: boolean;
   paused: boolean;
   busy: boolean;
@@ -136,7 +136,7 @@ export function LiveControls(props: {
             pressed={props.paused}
           />
           <ControlButton
-            label="Hint"
+            label="Get help"
             shortcut="H"
             keys="H"
             icon={<LightbulbIcon />}

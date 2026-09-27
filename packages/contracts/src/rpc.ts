@@ -11,15 +11,35 @@ export const RpcOk = z.object({
 });
 export type RpcOk = z.infer<typeof RpcOk>;
 
-/** Three lines as asked for; fewer only if Claude returned duplicates or blanks. */
-export const HintResponse = z.object({ suggestions: z.array(z.string().min(1)).min(1).max(3) });
+/**
+ * Get help: the words to say next, why they fit this point of the call, and what
+ * to say if she pushes back (left out when Claude gave none). The RPC keeps its
+ * original name, `call.hint`, as do the `hint` event and cost lane.
+ */
+export const HintResponse = z.object({
+  say: z.string().min(1),
+  why: z.string().min(1),
+  ifPushback: z.string().min(1).optional(),
+});
 export type HintResponse = z.infer<typeof HintResponse>;
 
-/** What the hint call asks Claude for (structured output; the lengths are stated, not enforced). */
+/** What Get help asks Claude for (structured output; the lengths are stated, not enforced). */
 export const HintDraft = z.object({
-  suggestions: z
-    .array(z.string().describe('One line the rep could say next, at most 20 words'))
-    .describe('Exactly three different lines, best first'),
+  say: z
+    .string()
+    .describe(
+      'The exact words the rep should say next, as they would say them aloud: at most 35 words',
+    ),
+  why: z
+    .string()
+    .describe(
+      'Why this line now: the stage of the call and the technique it uses, in one short sentence',
+    ),
+  ifPushback: z
+    .string()
+    .describe(
+      "What the rep should say if she pushes back on that line, in the rep's words: at most 30 words",
+    ),
 });
 export type HintDraft = z.infer<typeof HintDraft>;
 

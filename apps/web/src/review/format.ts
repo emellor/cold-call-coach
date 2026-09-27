@@ -50,7 +50,7 @@ export function money(usd: number | null): string {
 export const COST_LABELS: Record<CostKey, string> = {
   prospect: 'Her replies',
   judge: 'The coach judging your turns',
-  hint: 'Hints',
+  hint: 'Get help',
   review: 'This review',
   stt: 'Hearing you',
   tts: 'Her voice',

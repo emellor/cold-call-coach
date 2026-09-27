@@ -32,17 +32,23 @@ function hintsFrom(answer: () => Promise<BetaMessage & { parsed_output: unknown 
 const prompt = { system: 'You coach.', user: 'Prospect: Claire Hughes.' };
 
 describe('claudeHints', () => {
-  it('asks for structured lines and returns them cleaned, with how long it took', async () => {
+  it('asks for structured help and returns it cleaned, with how long it took', async () => {
     const { hints, parse, onUsage } = hintsFrom(() =>
       Promise.resolve(
         reply({
-          suggestions: [' "Got thirty seconds?" ', 'Got thirty seconds?', 'Is now bad?', 'Hi.'],
+          say: ' "Got thirty seconds?" ',
+          why: 'Opener: ask permission first.',
+          ifPushback: 'Fair enough. When is better?',
         }),
       ),
     );
-    const result = await hints(prompt);
-    expect(result.suggestions).toEqual(['Got thirty seconds?', 'Is now bad?', 'Hi.']);
-    expect(result.ms).toBeGreaterThanOrEqual(0);
+    const { ms, ...help } = await hints(prompt);
+    expect(help).toEqual({
+      say: 'Got thirty seconds?',
+      why: 'Opener: ask permission first.',
+      ifPushback: 'Fair enough. When is better?',
+    });
+    expect(ms).toBeGreaterThanOrEqual(0);
     const [params, options] = parse.mock.calls[0]!;
     expect(params).toMatchObject({
       model: 'claude-opus-5',
@@ -59,8 +65,11 @@ describe('claudeHints', () => {
   it('fails on a refusal or an empty answer', async () => {
     const refused = hintsFrom(() => Promise.resolve(reply(null, { stop_reason: 'refusal' })));
     await expect(refused.hints(prompt)).rejects.toThrow(HintError);
-    const empty = hintsFrom(() => Promise.resolve(reply({ suggestions: ['  ', ''] })));
-    await expect(empty.hints(prompt)).rejects.toThrow('The hint came back empty. Try again.');
+    await expect(refused.hints(prompt)).rejects.toThrow('The coach declined to help here.');
+    const empty = hintsFrom(() =>
+      Promise.resolve(reply({ say: '  ', why: 'Opener.', ifPushback: '' })),
+    );
+    await expect(empty.hints(prompt)).rejects.toThrow('Help came back empty. Try again.');
   });
 });
 
@@ -72,11 +81,11 @@ describe('describeHintError', () => {
     expect(describeHintError(apiError(401))).toContain('check ANTHROPIC_API_KEY');
     expect(describeHintError(apiError(429))).toContain('rate-limiting');
     expect(describeHintError(apiError(529))).toContain('overloaded');
-    expect(describeHintError(new APIUserAbortError())).toBe('The hint took too long. Try again.');
+    expect(describeHintError(new APIUserAbortError())).toBe('Help took too long. Try again.');
     expect(describeHintError(new DOMException('timed out', 'TimeoutError'))).toBe(
-      'The hint took too long. Try again.',
+      'Help took too long. Try again.',
     );
     expect(describeHintError(new HintError('Nothing here.'))).toBe('Nothing here.');
-    expect(describeHintError(new Error('raw internals'))).toBe("Couldn't get a hint. Try again.");
+    expect(describeHintError(new Error('raw internals'))).toBe("Couldn't get help. Try again.");
   });
 });

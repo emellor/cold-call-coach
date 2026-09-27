@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 interface ProspectStageProps {
   name: string;
   role: string;
-  /** Overlays: call status, tips, hints, "Call ended". */
+  /** Overlays: call status, tips, help, "Call ended". */
   children?: ReactNode;
 }
 

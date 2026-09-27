@@ -144,9 +144,9 @@ export class CallControls {
     logger.info({ pausedMs }, 'resumed');
   }
 
-  /** Three lines the rep could say next. A second press while one is on its way shares it. */
+  /** Get help: what to say next, and why. A second press while one is on its way shares it. */
   hint(): Promise<HintResponse> {
-    const refusal = this.#refusal('Hint');
+    const refusal = this.#refusal('Help');
     if (refusal) return Promise.reject(new ControlError(refusal));
     if (!this.#hint) {
       this.#hint = this.#fetchHint().finally(() => {
@@ -159,9 +159,9 @@ export class CallControls {
   async #fetchHint(): Promise<HintResponse> {
     const { hints, hintPrompt, recorder, logger } = this.#deps;
     try {
-      const { suggestions, ms } = await hints(hintPrompt());
-      recorder.event('hint', { suggestions, ms });
-      return { suggestions };
+      const { ms, ...help } = await hints(hintPrompt());
+      recorder.event('hint', { ...help, ms });
+      return help;
     } catch (error) {
       logger.warn({ err: error }, 'hint failed');
       throw new ControlError(error instanceof HintError ? error.message : describeHintError(error));

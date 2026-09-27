@@ -356,7 +356,7 @@ Optionally copy the MPFB `modelDynamicBones` from TalkingHead's `siteconfig.js`.
 ### 8.3 Controls (M5, RPC)
 
 - **Pause / resume:** the agent ignores turns and interrupts speech; the web mutes the mic.
-- **Hint:** three short lines you could say now, from a structured-output call that should take no more than ~2 s.
+- **Get help** (was **Hint**): the exact words to say now, why they fit this point of the call, and what to say if she pushes back, from a structured-output call that should take no more than ~2 s.
 - **Rewind:**
   1. Truncate the prospect's context to before the rep's last turn. Truncate only, never edit earlier turns.
   2. Restore that turn's state snapshot.
@@ -422,7 +422,7 @@ The web calls `localParticipant.performRpc({ destinationIdentity: <agent identit
 | Method | Returns |
 |---|---|
 | `call.pause`, `call.resume` | `{ ok }` |
-| `call.hint` | `{ suggestions: string[] }` |
+| `call.hint` | `{ say, why, ifPushback? }` |
 | `call.rewind` | `{ ok, reason? }` |
 | `call.hangup` | `{ ok }` |
 
