@@ -1,4 +1,4 @@
-import type { ScenarioSummary } from '@ccc/contracts';
+import type { CreateScenarioResponse, ScenarioSummary } from '@ccc/contracts';
 import {
   RoomAudioRenderer,
   RoomContext,
@@ -17,8 +17,10 @@ import { useCallMode } from '../call/useCallMode.ts';
 import { useShortcuts } from '../call/useShortcuts.ts';
 import { LatencyPanel } from '../components/LatencyPanel.tsx';
 import { Transcript } from '../components/Transcript.tsx';
+import { removeScenario } from '../lib/api.ts';
 import { formatClock } from '../lib/stats.ts';
 import { usePersistentString } from '../lib/usePersistentString.ts';
+import { AddProspectDialog } from '../scenarios/AddProspectDialog.tsx';
 import { ScenarioPicker } from '../scenarios/ScenarioPicker.tsx';
 import { useScenarios } from '../scenarios/useScenarios.ts';
 
@@ -64,6 +66,36 @@ export function CallPage() {
     if (!selected) return;
     setDialled(selected);
     void dial({ scenarioId: selected.id, mode });
+  };
+
+  // "Add new", and taking away someone you added.
+  const [adding, setAdding] = useState(false);
+  const [pickerNote, setPickerNote] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null);
+  const onAdded = (added: CreateScenarioResponse) => {
+    setAdding(false);
+    setChosenId(added.scenario.id);
+    const { name } = added.scenario.prospect;
+    setPickerNote({
+      tone: 'ok',
+      text: `Added ${name} (${added.scenario.difficulty}).${
+        added.voice === 'default'
+          ? ' She speaks in the default voice: set CARTESIA_API_KEY on the web service too, so the next one you add gets a voice that fits her.'
+          : ''
+      }`,
+    });
+    void scenarios.reload();
+  };
+  const onRemove = async (prospect: ScenarioSummary) => {
+    const { name } = prospect.prospect;
+    if (!window.confirm(`Remove ${name}? Your calls with her stay in History.`)) return;
+    try {
+      await removeScenario(prospect.id);
+      setPickerNote({ tone: 'ok', text: `Removed ${name}.` });
+      await scenarios.reload();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setPickerNote({ tone: 'error', text: `Couldn't remove ${name}: ${detail}` });
+    }
   };
 
   return (
@@ -147,8 +179,20 @@ export function CallPage() {
                     scenarios={available}
                     selectedId={(live ? dialled : selected)?.id}
                     onSelect={setChosenId}
+                    onAdd={() => {
+                      setPickerNote(null);
+                      setAdding(true);
+                    }}
                     disabled={live}
                   />
+                )}
+                {pickerNote && (
+                  <p
+                    role={pickerNote.tone === 'error' ? 'alert' : 'status'}
+                    className={`text-sm ${pickerNote.tone === 'error' ? 'text-rose-300' : 'text-emerald-300'}`}
+                  >
+                    {pickerNote.text}
+                  </p>
                 )}
                 <p
                   className="text-sm text-slate-400"
@@ -160,6 +204,18 @@ export function CallPage() {
                     (shown
                       ? `Goal: ${shown.winCondition}.${live ? '' : ' Put your headset on and press Dial.'}`
                       : 'No scenarios found: check the API log.')}
+                  {!live && shown?.custom && (
+                    <>
+                      {' '}
+                      <button
+                        type="button"
+                        onClick={() => void onRemove(shown)}
+                        className="text-slate-400 underline hover:text-slate-200 focus-visible:outline-2 focus-visible:outline-sky-400"
+                      >
+                        Remove {shown.prospect.name}
+                      </button>
+                    </>
+                  )}
                 </p>
               </>
             )}
@@ -202,6 +258,8 @@ export function CallPage() {
             {view.notice && <NoticeLine key={view.notice.id} notice={view.notice} />}
           </div>
         </footer>
+
+        {adding && <AddProspectDialog onClose={() => setAdding(false)} onAdded={onAdded} />}
 
         {live && view.room && <RoomAudioRenderer />}
         {live && view.room && (

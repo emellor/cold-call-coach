@@ -67,12 +67,31 @@ export const ScenarioSummary = z.object({
   difficulty: Difficulty,
   winCondition: z.string(),
   prospect: z.object({ name: z.string(), role: z.string(), company: z.string() }),
+  /** Added with "Add new" rather than shipped in scenarios/; only these can be removed. */
+  custom: z.boolean(),
 });
 export type ScenarioSummary = z.infer<typeof ScenarioSummary>;
 
 /** `GET /api/scenarios` */
 export const ScenarioListResponse = z.object({ scenarios: z.array(ScenarioSummary) });
 export type ScenarioListResponse = z.infer<typeof ScenarioListResponse>;
+
+/** `POST /api/scenarios`: "Add new", a prospect described in the rep's own words. */
+export const CreateScenarioRequest = z.object({
+  description: z
+    .string()
+    .trim()
+    .min(10, 'Describe her in a sentence or two.')
+    .max(2000, 'Keep the description under 2,000 characters.'),
+});
+export type CreateScenarioRequest = z.infer<typeof CreateScenarioRequest>;
+
+export const CreateScenarioResponse = z.object({
+  scenario: ScenarioSummary,
+  /** `chosen`: a voice picked to fit her. `default`: CARTESIA_VOICE_ID, as the API can't list voices. */
+  voice: z.enum(['chosen', 'default']),
+});
+export type CreateScenarioResponse = z.infer<typeof CreateScenarioResponse>;
 
 /** `GET /internal/scenarios/:id` (agent only): everything the prospect and judge need. */
 export const InternalScenarioResponse = z.object({

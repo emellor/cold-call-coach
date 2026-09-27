@@ -29,16 +29,16 @@ browser (apps/web) ⇄ LiveKit Cloud ⇄ voice agent (apps/agent) → Deepgram �
 Keys go in the repo-root `.env`, which git ignores, or in your host's secret settings.
 Never paste them into a chat, an issue or a commit. `.env.example` lists every variable.
 
-| Variable                                               | Used by                                                         | Where to get it                                                                                                                                                   |
-| ------------------------------------------------------ | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | API (room tokens) and agent                                     | LiveKit Cloud: your project → Settings → API keys → **Create key**. The secret is shown only then; **Generate Token** makes a room token, which is not the secret |
-| `ANTHROPIC_API_KEY`                                    | Agent (her replies, the judge, Get help) and API (the review)   | Claude Console → API keys. Create it in a workspace                                                                                                               |
-| `ANTHROPIC_WORKSPACE_ID`                               | Wherever `ANTHROPIC_API_KEY` is, only for a key in no workspace | The workspace's ID (`wrkspc_…`) from the Claude Console. A key created in a workspace doesn't need it                                                             |
-| `DEEPGRAM_API_KEY`                                     | Agent: hearing you                                              | Deepgram console → API keys                                                                                                                                       |
-| `CARTESIA_API_KEY`                                     | Agent: her voice                                                | Cartesia → API keys                                                                                                                                               |
-| `CARTESIA_VOICE_ID`                                    | Agent, for a scenario whose voice is still a placeholder        | Cartesia's voice library: a voice's ID                                                                                                                            |
-| `INTERNAL_API_SECRET`                                  | API and agent, the same value on both                           | Any random string, e.g. `openssl rand -hex 32`                                                                                                                    |
-| `APP_PASSWORD`                                         | API, deployed only                                              | You choose it (8 characters or more)                                                                                                                              |
+| Variable                                               | Used by                                                                              | Where to get it                                                                                                                                                   |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | API (room tokens) and agent                                                          | LiveKit Cloud: your project → Settings → API keys → **Create key**. The secret is shown only then; **Generate Token** makes a room token, which is not the secret |
+| `ANTHROPIC_API_KEY`                                    | Agent (her replies, the judge, Get help) and API (the review, **Add new**)           | Claude Console → API keys. Create it in a workspace                                                                                                               |
+| `ANTHROPIC_WORKSPACE_ID`                               | Wherever `ANTHROPIC_API_KEY` is, only for a key in no workspace                      | The workspace's ID (`wrkspc_…`) from the Claude Console. A key created in a workspace doesn't need it                                                             |
+| `DEEPGRAM_API_KEY`                                     | Agent: hearing you                                                                   | Deepgram console → API keys                                                                                                                                       |
+| `CARTESIA_API_KEY`                                     | Agent: her voice. Optional on the API: **Add new** chooses each new prospect a voice | Cartesia → API keys                                                                                                                                               |
+| `CARTESIA_VOICE_ID`                                    | Agent, for a scenario whose voice is still a placeholder                             | Cartesia's voice library: a voice's ID                                                                                                                            |
+| `INTERNAL_API_SECRET`                                  | API and agent, the same value on both                                                | Any random string, e.g. `openssl rand -hex 32`                                                                                                                    |
+| `APP_PASSWORD`                                         | API, deployed only                                                                   | You choose it (8 characters or more)                                                                                                                              |
 
 Locally, `INTERNAL_API_SECRET` can stay as `.env.example` has it and `APP_PASSWORD`
 empty, which means no sign-in. In production the API refuses to start with either one
@@ -86,6 +86,24 @@ day and time, and she agrees to meet.
   library. Until you fill them in, `CARTESIA_VOICE_ID` in `.env` is used for all three.
 - **What you sell** is `scenarios/product.json`. The judge and the review read it; the
   prospect never does, so she only knows what you tell her.
+- **Add new.** The last card in the picker. Describe the person you want to practise on,
+  such as _"a mid-sized energy broker with a lot of resistance: very tough to sell to, and
+  they have an in-house software team"_, and Claude (`REVIEW_MODEL`, at medium effort)
+  writes her in about half a minute:
+  - Her name, role, company, personality and way of talking come from what you describe.
+  - So do her objections, e.g. "our developers could build that".
+  - So do her private facts and her difficulty.
+  - Her patience and interest thresholds come from the shipped scenario of the same
+    difficulty, which the tests prove can be won. Her private facts stay on the server,
+    so you find them out on the call, as with the others.
+  - With `CARTESIA_API_KEY` set on the API as well as the agent, she gets a voice chosen
+    from Cartesia's library to fit her; without it, she speaks in `CARTESIA_VOICE_ID`.
+  - **Remove** takes someone you added out of the picker. Your calls with her stay in
+    History.
+
+  Every prospect is a woman, because the coaching prompts are written that way. One costs
+  about $0.05–0.10 to write.
+
 - **Editing.** The API validates every file when it starts and refuses to boot on a bad
   one, naming the file and field. `pnpm test` checks them too. Bump a scenario's
   `version` when you change it meaningfully: calls record the version they were made
@@ -241,8 +259,8 @@ service, the agent as a background worker, and Postgres. LiveKit Cloud stays as 
 1. In Render, choose **New → Blueprint** and pick this repository.
 2. Fill in the secrets it asks for. The web service and the worker each ask for the
    LiveKit trio and `ANTHROPIC_API_KEY`, because both use them. The web service also
-   asks for `APP_PASSWORD`; the worker asks for `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY`
-   and `CARTESIA_VOICE_ID`. `INTERNAL_API_SECRET` is generated and shared with the
+   asks for `APP_PASSWORD`, and optionally `CARTESIA_API_KEY` for **Add new**'s voices;
+   the worker asks for `DEEPGRAM_API_KEY`, `CARTESIA_API_KEY` and `CARTESIA_VOICE_ID`. `INTERNAL_API_SECRET` is generated and shared with the
    worker, and the database is wired in.
 3. Apply. Each deploy:
    - installs with the pnpm version `package.json` pins;

@@ -104,6 +104,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.128.0
         version: 0.128.0(zod@4.6.5)
+      '@cartesia/cartesia-js':
+        specifier: 4.2.0
+        version: 4.2.0(ws@8.21.3)
       '@ccc/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -315,6 +318,14 @@ packages:
 
   '@cacheable/utils@2.5.0':
     resolution: {integrity: sha512-buipgOVDkkPXNR5+xBpDw7Zk2n1EvU7qBJCNUcL7rhQ//kfpOXPAvQ511Os0vpLYJ1pZnvudNytkQt2hst3wqA==}
+
+  '@cartesia/cartesia-js@4.2.0':
+    resolution: {integrity: sha512-v5djlNl226LSYg9Q/TecHd7ClK8He6CeXtp3uCxdiK500WMgPXkOSdd5AxokWypQDkFdiGj54455oKFNFeq5jw==}
+    peerDependencies:
+      ws: ^8.18.0
+    peerDependenciesMeta:
+      ws:
+        optional: true
 
   '@csstools/color-helpers@6.1.2':
     resolution: {integrity: sha512-grhRy3OKmniaAEKXMjua5z/EODX0MSqBGjunw8+j/3HQjOnahs2AGhvEOIYVUWcU6ScApbhLhVrQTX8XqrMrow==}
@@ -3523,6 +3534,10 @@ snapshots:
     dependencies:
       hashery: 1.5.1
       keyv: 5.6.0
+
+  '@cartesia/cartesia-js@4.2.0(ws@8.21.3)':
+    optionalDependencies:
+      ws: 8.21.3
 
   '@csstools/color-helpers@6.1.2': {}
 

@@ -42,13 +42,17 @@ services:
         sync: false
       - key: LIVEKIT_API_SECRET
         sync: false
-      # The post-call review.
+      # The post-call review, and "Add new" writing prospects.
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: REVIEW_MODEL
         value: claude-opus-5
       - key: REVIEW_EFFORT
         value: high
+      # Optional: "Add new" chooses each new prospect a voice from Cartesia's
+      # library. Without it, new prospects speak in the worker's CARTESIA_VOICE_ID.
+      - key: CARTESIA_API_KEY
+        sync: false
 
   - type: worker
     name: cold-call-coach-agent

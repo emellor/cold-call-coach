@@ -47,6 +47,9 @@ const Config = z.object({
     cleaned,
     z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('high'),
   ),
+  // Optional: lets "Add new" choose each new prospect a voice from Cartesia's
+  // library. Without it they speak in the agent's CARTESIA_VOICE_ID.
+  CARTESIA_API_KEY: optional(z.string().min(1)),
   // One password for a deployed app: every /api route then needs its session
   // cookie. Unset locally (no sign-in); required in production.
   APP_PASSWORD: optional(z.string().min(8, 'must be at least 8 characters')),

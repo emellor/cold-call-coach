@@ -10,12 +10,15 @@ interface ScenarioPickerProps {
   scenarios: readonly ScenarioSummary[];
   selectedId: string | undefined;
   onSelect: (id: string) => void;
+  /** "Add new": opens the dialog to describe someone new. */
+  onAdd: () => void;
   /** Locked while a call is live. */
   disabled: boolean;
 }
 
-/** Who you're calling: one card per scenario, easiest first. */
-export function ScenarioPicker({ scenarios, selectedId, onSelect, disabled }: ScenarioPickerProps) {
+/** Who you're calling: one card per scenario, the shipped ones easiest first, then yours. */
+export function ScenarioPicker(props: ScenarioPickerProps) {
+  const { scenarios, selectedId, onSelect, onAdd, disabled } = props;
   return (
     <fieldset disabled={disabled} className="min-w-0">
       <legend className="mb-2 text-sm font-medium text-slate-300">Who are you calling?</legend>
@@ -41,10 +44,17 @@ export function ScenarioPicker({ scenarios, selectedId, onSelect, disabled }: Sc
               />
               <span className="flex items-center justify-between gap-2">
                 <span className="font-medium text-slate-100">{s.prospect.name}</span>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${DIFFICULTY_STYLE[s.difficulty]}`}
-                >
-                  {s.difficulty}
+                <span className="flex items-center gap-1.5">
+                  {s.custom && (
+                    <span className="rounded-full bg-slate-700/60 px-2 py-0.5 text-xs text-slate-300">
+                      Added by you
+                    </span>
+                  )}
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${DIFFICULTY_STYLE[s.difficulty]}`}
+                  >
+                    {s.difficulty}
+                  </span>
                 </span>
               </span>
               <span className="text-slate-400">
@@ -54,6 +64,14 @@ export function ScenarioPicker({ scenarios, selectedId, onSelect, disabled }: Sc
             </label>
           );
         })}
+        <button
+          type="button"
+          onClick={onAdd}
+          className="flex flex-col items-start gap-1 rounded-lg border border-dashed border-slate-700 p-3 text-left text-sm text-slate-300 transition-colors hover:border-sky-500 hover:text-white focus-visible:outline-2 focus-visible:outline-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <span className="font-medium text-slate-100">+ Add new</span>
+          <span className="text-slate-400">Describe someone and practise on them</span>
+        </button>
       </div>
     </fieldset>
   );

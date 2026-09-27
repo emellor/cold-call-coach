@@ -110,7 +110,8 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
 - **API**: at boot `readScenarioCatalog` validates the files (a bad one stops the boot)
   and `syncScenarios` upserts them by `(id, version)`, retrying until Postgres answers.
   Routes read the table back: `GET /api/scenarios` (summaries only; private facts never
-  leave the server) and `GET /internal/scenarios/:id` (agent only, `x-internal-secret`).
+  leave the server; the shipped ones first, then the rep's own) and
+  `GET /internal/scenarios/:id` (agent only, `x-internal-secret`).
   The product and rubrics stay in memory; there are no tables for them.
 - **Core** (pure): `buildProspectSystemPrompt` (no product details: she doesn't know what
   the caller sells), `stateEngine` (`applyJudgement`, `moodFor`, `stateToInstruction`,
@@ -135,6 +136,25 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
   stage and fact keys unconstrained. A failed or timed-out judgement applies no signals.
 - **`scripts/simulate-call.ts`** drives the same brain, request builders and tools with
   Claude as the rep (`scripts/simulate/`); its harness is unit-tested with a fake Claude.
+- **"Add new"** (`POST /api/scenarios`): the rep describes someone, and
+  `apps/api/src/prospects/writer.ts` makes one structured-output call on `REVIEW_MODEL`
+  (medium effort) for a `ProspectDraft` (`contracts/prospectDraft.ts`).
+  - The prompt and the checks are pure, in `core/prospect/writer.ts`. `scenarioFromDraft`
+    takes the thresholds, win condition and rubric from the shipped scenario of the same
+    difficulty, so every added prospect is as winnable as a tested one. It refuses a draft
+    that doesn't make a valid `ScenarioSpec`.
+  - Her voice: with `CARTESIA_API_KEY` on the API, `prospects/voices.ts` lists Cartesia's
+    feminine English voices (cached for an hour), and the draft's schema gets `voiceId` as
+    an enum of their ids. Without it, the voice is `VOICE_ID_PLACEHOLDER` and the agent
+    uses `CARTESIA_VOICE_ID`.
+  - Storage: she is a `scenarios` row with `source = 'custom'` and the rep's
+    `description` (migration 0005). `syncScenarios` never touches her, as file ids never
+    collide with hers (her name plus six hex characters).
+  - `DELETE /api/scenarios/:id` only archives a custom row (`archived_at`):
+    `latestScenarios` and `latestScenario` skip archived rows, but calls keep joining on
+    it, so history is intact.
+  - Every prospect is a woman: the judge, review and coach prompts say "she", and the
+    writer's prompt keeps her one whatever the description says.
 
 ## The call log and the review (M4)
 

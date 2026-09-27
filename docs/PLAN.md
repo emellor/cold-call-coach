@@ -510,7 +510,7 @@ Total: about 2–3 weeks of focused work.
 - Your own characters: MPFB in Blender for a 3D-render look, or VRoid for cartoon. Male prospects need a male avatar.
 - Custom "bored" and "sceptical" moods via TalkingHead's `animMoods`.
 - The prospect cutting in when you ramble: `userTurnLimit` and `onUserTurnExceeded` exist in the Node SDK.
-- A scenario generator from `product.json`, objection drills, a "power hour" of back-to-back calls, and progress charts.
+- Objection drills, a "power hour" of back-to-back calls, and progress charts. (A scenario generator shipped in M7 as **Add new**: Claude writes a prospect from the rep's own description.)
 - Dial-in from a real phone (LiveKit SIP).
 - Kokoro as a free TTS option.
 - Multi-user, teams and billing.

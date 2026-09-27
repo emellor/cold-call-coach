@@ -1,15 +1,25 @@
+import { randomUUID } from 'node:crypto';
 import {
+  CreateScenarioResponse,
   INTERNAL_SECRET_HEADER,
   InternalScenarioResponse,
   ScenarioListResponse,
 } from '@ccc/contracts';
+import { eq, like } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.ts';
 import { loadConfig } from '../config.ts';
 import { createDb } from '../db/client.ts';
+import { scenarios } from '../db/schema.ts';
+import {
+  NO_WRITER_MESSAGE,
+  type ProspectWriter,
+  ProspectWriterError,
+} from '../prospects/writer.ts';
 import { testCatalog } from '../test/catalog.ts';
 import { databaseAvailable, testDatabaseUrl } from '../test/db.ts';
+import { stubWriter } from '../test/prospects.ts';
 
 const hasDb = await databaseAvailable();
 const SECRET = 'route-test-internal-secret';
@@ -30,8 +40,23 @@ describe.skipIf(!hasDb)('scenario routes (real Postgres)', () => {
       { webDistDir: '/nonexistent' },
     );
   });
+  // Prospects added here get ids with this prefix, so they are easy to clean up.
+  const prefix = `zz-added-${randomUUID().slice(0, 8)}`;
+  const withWriter = (writer: ProspectWriter | null) =>
+    buildApp(
+      {
+        config: loadConfig({ DATABASE_URL: testDatabaseUrl, INTERNAL_API_SECRET: SECRET }),
+        pool,
+        db,
+        catalog: testCatalog,
+        prospectWriter: writer,
+      },
+      { webDistDir: '/nonexistent' },
+    );
+
   afterAll(async () => {
     await app.close();
+    await db.delete(scenarios).where(like(scenarios.id, `${prefix}-%`));
     await pool.end();
   });
 
@@ -54,6 +79,7 @@ describe.skipIf(!hasDb)('scenario routes (real Postgres)', () => {
           role: 'Finance Director',
           company: 'Harrow & Finch Logistics',
         },
+        custom: false,
       });
     });
 
@@ -62,6 +88,106 @@ describe.skipIf(!hasDb)('scenario routes (real Postgres)', () => {
       for (const word of ['hidden', 'pains', 'patience', 'meetingAt', 'objections', 'voiceId']) {
         expect(res.body).not.toContain(word);
       }
+    });
+  });
+
+  describe('POST /api/scenarios ("Add new") and DELETE /api/scenarios/:id', () => {
+    const add = (target: FastifyInstance, description: string) =>
+      target.inject({ method: 'POST', url: '/api/scenarios', payload: { description } });
+
+    it('writes her from the description, stores her, and lists her after the shipped ones', async () => {
+      const id = `${prefix}-rachel`;
+      const { writer, descriptions } = stubWriter(id);
+      const added = await withWriter(writer);
+      const res = await add(added, '  A mid-sized energy broker, very tough to sell to.  ');
+      expect(res.statusCode).toBe(201);
+      expect(CreateScenarioResponse.parse(res.json())).toEqual({
+        scenario: {
+          id,
+          version: 1,
+          title: 'Energy broker with an in-house dev team',
+          difficulty: 'hard',
+          winCondition: 'Agrees to a 20-minute call at a specific day and time',
+          prospect: {
+            name: 'Rachel Byrne',
+            role: 'Operations Director',
+            company: 'Voltline Energy Partners',
+          },
+          custom: true,
+        },
+        voice: 'default',
+      });
+      expect(descriptions).toEqual(['A mid-sized energy broker, very tough to sell to.']);
+      // Her private facts stay server-side, as everyone else's do.
+      expect(res.body).not.toContain('home-grown portal');
+
+      const [row] = await db.select().from(scenarios).where(eq(scenarios.id, id));
+      expect(row).toMatchObject({
+        source: 'custom',
+        description: 'A mid-sized energy broker, very tough to sell to.',
+      });
+
+      const listed = ScenarioListResponse.parse(
+        (await added.inject({ method: 'GET', url: '/api/scenarios' })).json(),
+      ).scenarios;
+      const at = listed.findIndex((s) => s.id === id);
+      expect(at).toBeGreaterThan(listed.findIndex((s) => s.id === 'hard-facilities-manager'));
+      expect(listed[at]?.custom).toBe(true);
+
+      // The agent can load her for a call.
+      const internal = await added.inject({
+        method: 'GET',
+        url: `/internal/scenarios/${id}`,
+        headers: { [INTERNAL_SECRET_HEADER]: SECRET },
+      });
+      expect(InternalScenarioResponse.parse(internal.json()).scenario.prospect.name).toBe(
+        'Rachel Byrne',
+      );
+      await added.close();
+    });
+
+    it('removes a prospect you added, and only one you added', async () => {
+      const id = `${prefix}-gone`;
+      const added = await withWriter(stubWriter(id).writer);
+      expect((await add(added, 'A tough broker who hates cold calls.')).statusCode).toBe(201);
+
+      const remove = (target: string) =>
+        added.inject({ method: 'DELETE', url: `/api/scenarios/${target}` });
+      expect((await remove(id)).statusCode).toBe(204);
+      expect((await remove(id)).statusCode).toBe(404);
+      expect((await remove('hard-facilities-manager')).statusCode).toBe(404);
+      const listed = ScenarioListResponse.parse(
+        (await added.inject({ method: 'GET', url: '/api/scenarios' })).json(),
+      ).scenarios;
+      expect(listed.some((s) => s.id === id)).toBe(false);
+      expect(listed.some((s) => s.id === 'hard-facilities-manager')).toBe(true);
+      await added.close();
+    });
+
+    it('refuses a description too short to write from', async () => {
+      const added = await withWriter(stubWriter(`${prefix}-short`).writer);
+      const res = await add(added, 'tough');
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toContain('Describe her in a sentence or two.');
+      await added.close();
+    });
+
+    it('says why when she could not be written', async () => {
+      const off = await withWriter(null);
+      const res = await add(off, 'A friendly office manager with time to talk.');
+      expect(res.statusCode).toBe(503);
+      expect(res.json<{ error: string }>().error).toBe(NO_WRITER_MESSAGE);
+      await off.close();
+
+      const failing = await withWriter(() =>
+        Promise.reject(new ProspectWriterError('Claude is overloaded. Try again shortly.')),
+      );
+      const failed = await add(failing, 'A friendly office manager with time to talk.');
+      expect(failed.statusCode).toBe(502);
+      expect(failed.json<{ error: string }>().error).toBe(
+        'Claude is overloaded. Try again shortly.',
+      );
+      await failing.close();
     });
   });
 
