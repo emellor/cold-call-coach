@@ -212,9 +212,10 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
 
 ## Demo calls (M7)
 
-- **One Claude call writes each demo, in the API.** A demo is a model cold call to read,
-  with no voice: an expert rep calls one of the prospects with a given approach, and the
-  technique behind every rep line comes with it.
+- **One Claude call writes each demo, in the API.** A demo is a model cold call to read or
+  listen to: an expert rep (always "Sam", so either voice fits) calls one of the prospects
+  with a given approach, or whoever the rep describes in a brief, and the technique behind
+  every rep line comes with it.
   - `POST /api/demos/generate` puts up to 20 rows in `demos` (migration 0006) as one
     batch. `core/demos/plan.ts` spreads them across the picker's prospects, each with
     the next of `DEMO_ANGLES`. A second batch is refused (409) while one is queued or
@@ -232,13 +233,34 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
   - A failure is never retried automatically: by then the call may have been paid for.
     It stays failed, with Claude's words, until `POST /api/demos/retry`.
   - Cost is priced from the usage and stored per demo; the page shows it.
+- **A demo from a brief** (`POST /api/demos`, `CreateDemoRequest`): the rep's own words
+  about who they're calling, the business and the objective. Migration 0008 lets a demo
+  have a `brief` instead of a `scenario_id` and `angle` (`demos_source_check` holds one or
+  the other).
+  - It is a batch of one, and `claimDemo` takes it before any batch, ordering by
+    `brief IS NULL` first: the rep waits for it on its page, which polls every 3 s.
+  - The writer sends the same cached system prompt with `buildDemoBriefUserPrompt`, and
+    asks for `DemoBriefDraft`, which adds the `prospect` Claude made up (name, role,
+    company, difficulty, gender, locale). It is stored in `demos.prospect`, and the list
+    reads it from there.
+  - A brief can set an objective other than a meeting, so its outcome is
+    `objective_met`, with what was agreed in `outcome_detail`. Prospects in a brief may
+    be men: the prompt tells Claude to read "she" as "he" for a man.
+- **Listen is free and in the browser**: `web/src/demos/readAloud.ts` speaks the call
+  through the Web Speech API, a sentence per utterance (Chrome cuts long utterances off,
+  and a pause then lands on a line). `pickVoices` gives the prospect a voice of their
+  gender and the rep the other, from the call's locale, preferring Premium, Enhanced,
+  Natural and Google voices and never macOS's novelty ones; with one voice, pitch tells
+  them apart. It needs no key and stores nothing. Cartesia would sound like the calls
+  but costs about as much per demo as writing it (roughly 2,000–3,000 characters at
+  $0.05 per 1,000).
 - **Why it's done this way.** The first version simulated each demo as a live call
   between two Claudes (the prospect engine and a judge on every line), then annotated it
   and voiced it with Cartesia: about $0.60–0.80 a demo. A Cartesia voice list without
   `locales` then crashed every attempt at the voicing step, after the Claude work was
   paid for, and each demo was retried three times.
 - Migration 0007 dropped the audio and mood columns. `web/src/demos/DemoPage.tsx`
-  shows the transcript; there is no audio route.
+  shows the transcript and reads it aloud in the browser; there is no audio route.
 
 ## The live coach and the controls (M5)
 

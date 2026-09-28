@@ -1,12 +1,12 @@
 // The demo calls' queue: in-process, like the reviews'. "Generate" puts a batch
-// in Postgres; this writes them a few at a time, one Claude call each, and
-// stores each transcript as it lands. A demo is tried once: a failure after
+// in Postgres, and a brief one demo; this writes them a few at a time, one
+// Claude call each, and stores each transcript as it lands. A demo is tried once: a failure after
 // Claude has answered has already been paid for, so it waits for the rep to
 // retry it instead of spending again on its own.
 import type { Db } from '../db/client.ts';
 import { latestScenario } from '../scenarios.ts';
 import { type DemoJob, claimDemo, failDemo, requeueInterrupted, saveDemo } from './store.ts';
-import type { DemoWriter } from './writer.ts';
+import type { DemoWriter, WrittenDemo } from './writer.ts';
 
 /** How many demos are written at once: a batch of 20 takes about ten minutes. */
 export const DEMO_CONCURRENCY = 3;
@@ -77,12 +77,24 @@ export class DemoQueue {
   async #write(writer: DemoWriter, job: DemoJob): Promise<void> {
     const started = performance.now();
     try {
-      const scenario = await latestScenario(this.#db, job.scenarioId);
-      if (!scenario) {
-        throw new Error('This prospect has been removed, so the call was not written.');
+      let written: WrittenDemo;
+      let scenarioVersion: number | null = null;
+      if (job.kind === 'brief') {
+        written = await writer({ brief: job.brief });
+      } else {
+        const scenario = await latestScenario(this.#db, job.scenarioId);
+        if (!scenario) {
+          throw new Error('This prospect has been removed, so the call was not written.');
+        }
+        written = await writer({ scenario, angle: job.angle });
+        scenarioVersion = scenario.version;
       }
-      const written = await writer({ scenario, angle: job.angle });
-      await saveDemo(this.#db, job.id, { ...written, scenarioVersion: scenario.version });
+      await saveDemo(this.#db, job.id, {
+        ...written,
+        scenarioVersion,
+        // A brief can set an objective other than the meeting a prospect's demo books.
+        outcome: job.kind === 'brief' ? 'objective_met' : 'meeting_booked',
+      });
       this.#log.info(
         {
           demoId: job.id,

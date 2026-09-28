@@ -1,5 +1,6 @@
 // Demo-call fixtures: a written call, and a stub writer that records what it
 // was asked for, can hold every call until released, and can fail on demand.
+import type { DemoProspect } from '@ccc/contracts';
 import type { DemoWriter, WrittenDemo } from '../demos/writer.ts';
 
 export const writtenDemo: WrittenDemo = {
@@ -27,20 +28,35 @@ export const writtenDemo: WrittenDemo = {
   costUsd: 0.08,
 };
 
+/** Who the stub writes a demo from a brief to. */
+export const briefProspect: DemoProspect = {
+  name: 'Tom Reid',
+  role: 'Head of Estates',
+  company: 'Carewell Homes',
+  difficulty: 'hard',
+  gender: 'male',
+  locale: 'en-GB',
+};
+
 export function stubDemoWriter(options: { failOn?: (angle: string) => string | null } = {}) {
   const asked: Array<{ scenarioId: string; angle: string }> = [];
+  const briefs: string[] = [];
   let hold: Promise<void> | null = null;
   let release = () => {};
-  const writer: DemoWriter = async ({ scenario, angle }) => {
-    asked.push({ scenarioId: scenario.id, angle });
+  const writer: DemoWriter = async (input) => {
+    if ('brief' in input) briefs.push(input.brief);
+    else asked.push({ scenarioId: input.scenario.id, angle: input.angle });
     if (hold) await hold;
-    const failure = options.failOn?.(angle);
+    if ('brief' in input) return { ...writtenDemo, prospect: briefProspect };
+    const failure = options.failOn?.(input.angle);
     if (failure) throw new Error(failure);
     return writtenDemo;
   };
   return {
     writer,
     asked,
+    /** The briefs it was asked to write from, in order. */
+    briefs,
     /** Every call from now on waits until `release()`. */
     holdAll() {
       hold = new Promise((resolve) => {

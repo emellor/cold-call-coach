@@ -53,3 +53,17 @@ export const RewindIcon = (props: SVGProps<SVGSVGElement>) => (
     <path d="M3 3v5h5" />
   </svg>
 );
+
+export const StopIcon = (props: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...props}>
+    <rect x="5" y="5" width="14" height="14" rx="2" />
+  </svg>
+);
+
+export const SpeakerIcon = (props: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...props}>
+    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+    <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+    <path d="M19 5a10 10 0 0 1 0 14" />
+  </svg>
+);
