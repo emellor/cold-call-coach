@@ -1,9 +1,12 @@
-import { type DemoScriptDraft, RubricSpec } from '@ccc/contracts';
+import { type DemoBriefDraft, type DemoScriptDraft, RubricSpec } from '@ccc/contracts';
 import { describe, expect, it } from 'vitest';
 import { product, scenario } from '../test/fixtures.ts';
 import { DEMO_ANGLES, demoPlan } from './plan.ts';
 import {
+  BRIEF_OPENING_LINE,
   DemoScriptError,
+  briefScriptFrom,
+  buildDemoBriefUserPrompt,
   buildDemoScriptSystemPrompt,
   buildDemoScriptUserPrompt,
   scriptFrom,
@@ -52,7 +55,9 @@ describe('demoPlan', () => {
 describe('the demo script prompt', () => {
   it('sets the product, the 10/10 scorecard and the shape of the answer, the same for every demo', () => {
     const system = buildDemoScriptSystemPrompt({ product, rubric });
-    expect(system).toContain(`selling WattGuard: ${product.oneLiner}`);
+    expect(system).toContain(
+      `The caller is Sam, an expert B2B rep selling WattGuard: ${product.oneLiner}`,
+    );
     expect(system).toContain(`The goal of the call: ${product.callGoal}.`);
     expect(system).toContain('- Discovery: Discovery: 10/10');
     expect(system).toContain('The call ends with the meeting booked');
@@ -71,6 +76,19 @@ describe('the demo script prompt', () => {
     expect(user).toContain('- Decision process: signs off anything under £20k');
     expect(user).toContain(`The rep's approach for this call: ${DEMO_ANGLES[3]}`);
     expect(user).toContain('Write the call in British English.');
+  });
+
+  it('gives a brief as the rep wrote it, and asks for whatever it leaves out', () => {
+    const brief =
+      '  Tom Reid, head of estates at Carewell, 14 care homes in Yorkshire. Gas bills doubled. Objective: a site visit.  ';
+    const user = buildDemoBriefUserPrompt({ brief });
+    expect(user).toContain(`<brief>\n${brief.trim()}\n</brief>`);
+    expect(user).toContain('fill in whatever it leaves out');
+    expect(user).toContain('where these instructions say "she", read "he" for a man');
+    expect(user).toContain('If the brief sets the call an objective, that is the goal of the call');
+    expect(user).toContain('Write the call in British English');
+    // No stored prospect's details: the brief is all there is.
+    expect(user).not.toContain(scenario.prospect.name);
   });
 });
 
@@ -105,7 +123,7 @@ describe('scriptFrom', () => {
   });
 
   it('joins lines in a row from one side, and keeps notes on the rep’s lines only', () => {
-    const script = scriptFrom(draft(), scenario);
+    const script = scriptFrom(draft(), scenario.prospect.openingLine);
     expect(script.lines).toHaveLength(9);
     expect(script.lines[0]).toEqual(line('prospect', 'Claire Hughes.'));
     expect(script.lines[1]).toEqual(
@@ -126,13 +144,44 @@ describe('scriptFrom', () => {
   });
 
   it('puts her opening line first when Claude starts with the rep', () => {
-    const script = scriptFrom(draft(call.slice(1)), scenario);
+    const script = scriptFrom(draft(call.slice(1)), scenario.prospect.openingLine);
     expect(script.lines[0]).toEqual(line('prospect', 'Claire Hughes.'));
     expect(script.lines[1]?.speaker).toBe('rep');
   });
 
   it('refuses a call too short to study', () => {
-    expect(() => scriptFrom(draft(call.slice(0, 5)), scenario)).toThrow(DemoScriptError);
-    expect(() => scriptFrom(draft(call.slice(0, 5)), scenario)).toThrow(/too short to study/);
+    expect(() => scriptFrom(draft(call.slice(0, 5)), scenario.prospect.openingLine)).toThrow(
+      DemoScriptError,
+    );
+    expect(() => scriptFrom(draft(call.slice(0, 5)), scenario.prospect.openingLine)).toThrow(
+      /too short to study/,
+    );
+  });
+
+  it('keeps who a brief call was to, filling a blank name rather than refusing a paid call', () => {
+    const brief = (name: string): DemoBriefDraft => ({
+      ...draft(call.slice(1)),
+      prospect: {
+        name,
+        role: ' Head of Estates ',
+        company: 'Carewell',
+        difficulty: 'hard',
+        gender: 'male',
+        locale: 'en-GB',
+      },
+    });
+    const script = briefScriptFrom(brief(' Tom Reid '));
+    expect(script.prospect).toEqual({
+      name: 'Tom Reid',
+      role: 'Head of Estates',
+      company: 'Carewell',
+      difficulty: 'hard',
+      gender: 'male',
+      locale: 'en-GB',
+    });
+    // The call started with the rep, so his first line is a plain answer.
+    expect(script.lines[0]).toEqual(line('prospect', BRIEF_OPENING_LINE));
+    expect(script.meeting).toBe('Thursday 10:00, 20-minute video call');
+    expect(briefScriptFrom(brief('  ')).prospect.name).toBe('The prospect');
   });
 });

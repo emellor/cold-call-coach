@@ -1,10 +1,13 @@
 // The demo calls' writer: one structured-output Claude call writes a whole
-// model cold call to one prospect (core/demos/script.ts holds the prompt and
-// the checks). Written on REVIEW_MODEL, the API's Claude model, at medium
-// effort. The system prompt is the same for every demo, so it is cached.
+// model cold call, to one prospect or from the rep's brief (core/demos/script.ts
+// holds the prompts and the checks). Written on REVIEW_MODEL, the API's Claude
+// model, at medium effort. The system prompt is the same for every demo, so it
+// is cached.
 import { APIUserAbortError } from '@anthropic-ai/sdk';
 import type { BetaMessage } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import {
+  DemoBriefDraft,
+  type DemoProspect,
   DemoScriptDraft,
   type PriceTable,
   type ProductSpec,
@@ -17,6 +20,8 @@ import {
   DemoScriptError,
   type Effort,
   SERVER_FALLBACK_BETA,
+  briefScriptFrom,
+  buildDemoBriefUserPrompt,
   buildDemoScriptSystemPrompt,
   buildDemoScriptUserPrompt,
   costUsd,
@@ -40,16 +45,22 @@ export class DemoWriterError extends Error {
 }
 
 export interface WrittenDemo extends DemoScript {
+  /** Who a demo from a brief called, as Claude wrote them. */
+  prospect?: DemoProspect;
   /** The model that answered. */
   model: string;
   /** Null if the model isn't in the price table. */
   costUsd: number | null;
 }
 
-export type DemoWriter = (input: { scenario: ScenarioSpec; angle: string }) => Promise<WrittenDemo>;
+/** A call to one of the stored prospects with a given approach, or one from the rep's brief. */
+export type DemoWriterInput = { scenario: ScenarioSpec; angle: string } | { brief: string };
+
+export type DemoWriter = (input: DemoWriterInput) => Promise<WrittenDemo>;
 
 /** Built once: an unchanged schema is compiled once by the API and then cached. */
 const FORMAT = structuredFormat(DemoScriptDraft);
+const BRIEF_FORMAT = structuredFormat(DemoBriefDraft);
 
 export function claudeDemoWriter(options: {
   messages: CreatingMessages;
@@ -70,9 +81,11 @@ export function claudeDemoWriter(options: {
     timeoutMs = DEMO_WRITER_TIMEOUT_MS,
   } = options;
 
-  return async ({ scenario, angle }) => {
-    const rubric = rubrics.find((r) => r.id === scenario.rubricId);
-    if (!rubric) throw new DemoWriterError(`The rubric "${scenario.rubricId}" is not loaded.`);
+  return async (input) => {
+    // A brief has no stored prospect to name a rubric; every shipped one uses the same.
+    const rubricId = 'brief' in input ? rubrics[0]?.id : input.scenario.rubricId;
+    const rubric = rubrics.find((r) => r.id === rubricId);
+    if (!rubric) throw new DemoWriterError(`The rubric "${rubricId ?? ''}" is not loaded.`);
     const caps = modelCapabilities(model);
     const started = performance.now();
     let message: BetaMessage;
@@ -88,10 +101,18 @@ export function claudeDemoWriter(options: {
               cache_control: { type: 'ephemeral' },
             },
           ],
-          messages: [{ role: 'user', content: buildDemoScriptUserPrompt({ scenario, angle }) }],
+          messages: [
+            {
+              role: 'user',
+              content:
+                'brief' in input
+                  ? buildDemoBriefUserPrompt(input)
+                  : buildDemoScriptUserPrompt(input),
+            },
+          ],
           output_config: {
             ...(caps.effort ? { effort: DEMO_WRITER_EFFORT } : {}),
-            format: FORMAT,
+            format: 'brief' in input ? BRIEF_FORMAT : FORMAT,
           },
           ...(caps.serverFallbacks ? { betas: [SERVER_FALLBACK_BETA], fallbacks: 'default' } : {}),
         },
@@ -131,16 +152,22 @@ export function claudeDemoWriter(options: {
       throw new DemoWriterError('Claude ran out of room writing this call. Retry it.');
     }
     const text = message.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
-    let draft: DemoScriptDraft;
+    let finish: () => DemoScript;
     try {
-      draft = FORMAT.parse(text);
+      if ('brief' in input) {
+        const draft = BRIEF_FORMAT.parse(text);
+        finish = () => briefScriptFrom(draft);
+      } else {
+        const draft = FORMAT.parse(text);
+        finish = () => scriptFrom(draft, input.scenario.prospect.openingLine);
+      }
     } catch (error) {
       throw new DemoWriterError("Claude's answer came back malformed. Retry it.", {
         cause: error,
       });
     }
     try {
-      return { ...scriptFrom(draft, scenario), model: message.model, costUsd: cost };
+      return { ...finish(), model: message.model, costUsd: cost };
     } catch (error) {
       if (error instanceof DemoScriptError) {
         throw new DemoWriterError(error.message, { cause: error });

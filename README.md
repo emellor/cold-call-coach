@@ -174,17 +174,33 @@ one, the page says so, and **Try again** reruns the review once the key is set.
 
 ## Demo calls
 
-**Demos** has model calls to read: an expert rep calls your prospects and books the
-meeting, taking a different approach each time. Examples: a compliance deadline, a peer
-story, an upfront agreement, straight talk about it being a cold call. Open one to read
-the whole call. Every line the rep says comes with the technique behind it and why it
-works at that point, and each call has a summary and the patterns to copy.
+**Demos** has model calls to read or listen to: an expert rep calls your prospects and
+books the meeting, taking a different approach each time. Examples: a compliance
+deadline, a peer story, an upfront agreement, straight talk about it being a cold call.
+Open one to read the whole call. Every line the rep says comes with the technique behind
+it and why it works at that point, and each call has a summary and the patterns to copy.
+
+**Write one from your brief** is for a call you're about to make. Describe the person, the
+business and what you want from the call, and Claude writes the 10/10 version of it, with
+whoever it makes of the prospect. A brief's objective can be something other than a
+meeting, a site visit say, and the demo is then marked **Objective met**. It's one request,
+written ahead of any batch: about a minute and 10 cents. The page waits for it and shows
+the call as soon as it's ready.
 
 **Generate 20 demo calls** queues a batch across the prospects in the picker, yours
 included. The API has Claude write each one in a single request: the rep's approach,
 her profile and what she's hiding go in, and the whole call comes back with the notes.
 Claude writes three at a time, so a batch takes about ten minutes. Each costs about
-10 cents on `REVIEW_MODEL` (about $2 for 20), and the page shows what each one cost.
+10 cents on `REVIEW_MODEL` (about $2 for 20; the first 20 on Opus 5.5 cost $0.075–0.119
+each), and the page shows what each one cost.
+
+**Listen** reads a call aloud with your browser's own voices, a different one for the rep
+and the prospect, highlighting each line as it goes. It costs nothing: no Claude and no
+Cartesia. Pause, stop, change the speed, or press ▶ on any line to hear the call from
+there. The voices are whatever the browser and the operating system offer, so they
+sound more synthetic than her voice on a call. On a Mac, downloading a Premium or
+Enhanced English voice (System Settings → Accessibility → Spoken Content → System voice →
+Manage Voices) gives the browser a better one to choose, and it prefers those.
 
 A demo is written once and kept. One that fails isn't tried again by itself, since the
 attempt may already have been paid for: **Retry** writes the failed ones again. Reading a

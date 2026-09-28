@@ -1,4 +1,6 @@
 import {
+  CreateDemoRequest,
+  CreateDemoResponse,
   DemoDetail,
   DemoListResponse,
   GenerateDemosRequest,
@@ -12,6 +14,7 @@ import {
   demoDetail,
   demosInProgress,
   listDemos,
+  queueBriefDemo,
   queueDemos,
   retryFailedDemos,
 } from '../demos/store.ts';
@@ -47,6 +50,21 @@ export function registerDemoRoutes(
     queue.kick();
     request.log.info({ queued }, 'demo calls queued');
     return reply.code(202).send(GenerateDemosResponse.parse({ queued }));
+  });
+
+  // One demo from the rep's own brief. It is written ahead of any batch, and the
+  // web waits for it on the demo's page.
+  app.post('/api/demos', async (request, reply) => {
+    const parsed = CreateDemoRequest.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      const [issue] = parsed.error.issues;
+      return reply.code(400).send({ error: issue?.message ?? 'Invalid request' });
+    }
+    if (!queue.enabled) return reply.code(503).send({ error: NO_DEMO_WRITER_MESSAGE });
+    const id = await queueBriefDemo(db, parsed.data.brief);
+    queue.kick();
+    request.log.info({ demoId: id }, 'demo call from a brief queued');
+    return reply.code(202).send(CreateDemoResponse.parse({ id }));
   });
 
   app.post('/api/demos/retry', async (_request, reply) => {

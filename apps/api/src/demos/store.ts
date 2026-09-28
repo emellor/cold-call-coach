@@ -1,7 +1,14 @@
-// Demo calls in Postgres: a batch is queued here, the API's DemoQueue claims
-// and writes them a few at a time, and the web lists and reads them.
+// Demo calls in Postgres: a batch, or one demo from the rep's brief, is queued
+// here, the API's DemoQueue claims and writes them a few at a time, and the web
+// lists and reads them.
 import { randomUUID } from 'node:crypto';
-import { type DemoDetail, type DemoSummary, ScenarioSpec } from '@ccc/contracts';
+import {
+  type DemoDetail,
+  type DemoOutcome,
+  DemoProspect,
+  type DemoSummary,
+  ScenarioSpec,
+} from '@ccc/contracts';
 import { demoPlan } from '@ccc/core';
 import { asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.ts';
@@ -13,11 +20,10 @@ export const MAX_ATTEMPTS = 2;
 
 const INTERRUPTED = 'The API restarted while writing this demo. Retry it.';
 
-export interface DemoJob {
-  id: string;
-  scenarioId: string;
-  angle: string;
-}
+/** A demo to write: to one of the stored prospects with an approach, or from a brief. */
+export type DemoJob =
+  | { id: string; kind: 'scenario'; scenarioId: string; angle: string }
+  | { id: string; kind: 'brief'; brief: string };
 
 /** Queues `count` demos across the given prospects, as one batch. Returns how many. */
 export async function queueDemos(
@@ -39,6 +45,16 @@ export async function queueDemos(
   return plan.length;
 }
 
+/** Queues one demo from the rep's brief, as a batch of its own. Returns its id. */
+export async function queueBriefDemo(db: Db, brief: string): Promise<string> {
+  const [row] = await db
+    .insert(demos)
+    .values({ batchId: randomUUID(), position: 1, brief })
+    .returning({ id: demos.id });
+  if (!row) throw new Error('The demo call was not queued.');
+  return row.id;
+}
+
 /** How many demos are waiting or being written. */
 export async function demosInProgress(db: Db): Promise<number> {
   const [row] = await db
@@ -48,28 +64,40 @@ export async function demosInProgress(db: Db): Promise<number> {
   return row?.n ?? 0;
 }
 
-/** Claims the oldest queued demo for writing, or null when none is waiting. */
+/**
+ * Claims the next queued demo for writing, or null when none is waiting. A
+ * demo from a brief goes first: the rep is waiting on that one page for it,
+ * while a batch carries on in the background.
+ */
 export async function claimDemo(db: Db): Promise<DemoJob | null> {
-  const claimed = await db.execute<{ id: string; scenario_id: string; angle: string }>(sql`
+  const claimed = await db.execute<{
+    id: string;
+    scenario_id: string | null;
+    angle: string | null;
+    brief: string | null;
+  }>(sql`
     UPDATE demos
        SET status = 'generating', claimed_at = now(), attempts = attempts + 1, updated_at = now()
      WHERE id = (
        SELECT id FROM demos
         WHERE status = 'queued'
-        ORDER BY created_at, position
+        ORDER BY brief IS NULL, created_at, position
         LIMIT 1
         FOR UPDATE SKIP LOCKED
      )
-    RETURNING id, scenario_id, angle`);
+    RETURNING id, scenario_id, angle, brief`);
   const row = claimed.rows[0];
-  return row ? { id: row.id, scenarioId: row.scenario_id, angle: row.angle } : null;
+  if (!row) return null;
+  if (row.brief !== null) return { id: row.id, kind: 'brief', brief: row.brief };
+  // demos_source_check: a demo without a brief has a prospect and an approach.
+  return { id: row.id, kind: 'scenario', scenarioId: row.scenario_id!, angle: row.angle! };
 }
 
 /** Stores a written demo and its lines, replacing any earlier try. False if there is no such demo. */
 export async function saveDemo(
   db: Db,
   id: string,
-  demo: WrittenDemo & { scenarioVersion: number },
+  demo: WrittenDemo & { scenarioVersion: number | null; outcome: DemoOutcome },
 ): Promise<boolean> {
   return db.transaction(async (tx) => {
     const updated = await tx
@@ -79,10 +107,11 @@ export async function saveDemo(
         claimedAt: null,
         error: null,
         scenarioVersion: demo.scenarioVersion,
+        prospect: demo.prospect ?? null,
         title: demo.title,
         summary: demo.summary,
         lessons: demo.lessons,
-        outcome: 'meeting_booked',
+        outcome: demo.outcome,
         outcomeDetail: demo.meeting,
         costUsd: demo.costUsd,
         updatedAt: sql`now()`,
@@ -148,23 +177,39 @@ export async function retryFailedDemos(db: Db): Promise<number> {
 
 type DemoRow = typeof demos.$inferSelect;
 
-/** Who each demo called, from the version it used, or the newest one before it has run. */
+/**
+ * Who each demo called: for a demo from a brief, whoever Claude wrote (nobody
+ * until it has); otherwise the prospect, from the version the demo used, or
+ * the newest one before it has run. The shipped prospects are all women.
+ */
 async function prospectsFor(db: Db, rows: readonly DemoRow[]) {
-  const ids = [...new Set(rows.map((r) => r.scenarioId))];
-  if (!ids.length) return () => null;
-  const stored = await db
-    .select({ id: scenarios.id, version: scenarios.version, spec: scenarios.spec })
-    .from(scenarios)
-    .where(inArray(scenarios.id, ids))
-    .orderBy(asc(scenarios.id), desc(scenarios.version));
+  const ids = [...new Set(rows.flatMap((r) => (r.scenarioId === null ? [] : [r.scenarioId])))];
+  const stored = ids.length
+    ? await db
+        .select({ id: scenarios.id, version: scenarios.version, spec: scenarios.spec })
+        .from(scenarios)
+        .where(inArray(scenarios.id, ids))
+        .orderBy(asc(scenarios.id), desc(scenarios.version))
+    : [];
   return (row: DemoRow): DemoSummary['prospect'] => {
+    if (row.scenarioId === null) {
+      const written = DemoProspect.safeParse(row.prospect);
+      return written.success ? written.data : null;
+    }
     const match =
       stored.find((s) => s.id === row.scenarioId && s.version === row.scenarioVersion) ??
       stored.find((s) => s.id === row.scenarioId);
     const spec = ScenarioSpec.safeParse(match?.spec);
     if (!spec.success) return null;
     const { name, role, company } = spec.data.prospect;
-    return { name, role, company, difficulty: spec.data.difficulty };
+    return {
+      name,
+      role,
+      company,
+      difficulty: spec.data.difficulty,
+      gender: 'female',
+      locale: spec.data.locale,
+    };
   };
 }
 
@@ -173,6 +218,7 @@ const summaryOf = (row: DemoRow, prospect: DemoSummary['prospect']): DemoSummary
   position: row.position,
   status: row.status,
   angle: row.angle,
+  brief: row.brief,
   title: row.title,
   prospect,
   outcome: row.outcome,

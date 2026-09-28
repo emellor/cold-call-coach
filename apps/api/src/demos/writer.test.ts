@@ -3,7 +3,7 @@ import type {
   BetaMessage,
   MessageCreateParamsNonStreaming,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages';
-import type { DemoScriptDraft } from '@ccc/contracts';
+import type { DemoBriefDraft, DemoScriptDraft } from '@ccc/contracts';
 import { DEMO_ANGLES } from '@ccc/core';
 import { describe, expect, it, vi } from 'vitest';
 import { readPriceTable } from '../prices.ts';
@@ -157,6 +157,49 @@ describe('claudeDemoWriter', () => {
       'message',
       'Claude took more than 3 minutes writing this call. Retry it.',
     );
+  });
+
+  it("writes a call from the rep's brief, with whoever Claude made the prospect", async () => {
+    const brief =
+      'Tom Reid, head of estates at Carewell, 14 care homes in Yorkshire. Objective: a site visit.';
+    const briefDraft: DemoBriefDraft = {
+      ...draft,
+      lines: call.slice(1),
+      meeting: 'A site visit at the Harrogate home, Tuesday at 2pm',
+      prospect: {
+        name: 'Tom Reid',
+        role: 'Head of Estates',
+        company: 'Carewell',
+        difficulty: 'hard',
+        gender: 'male',
+        locale: 'en-GB',
+      },
+    };
+    const { write, sent } = writerWith(() => Promise.resolve(answer({ json: briefDraft })));
+    const demo = await write({ brief });
+
+    const [params] = sent;
+    // The writer sends the user turn as one string.
+    const content = params?.messages[0]?.content as string;
+    expect(content).toContain(`<brief>\n${brief}\n</brief>`);
+    expect(content).not.toContain("The rep's approach for this call");
+    // The same cached system prompt as every other demo.
+    const scenarioCall = writerWith();
+    await scenarioCall.write({ scenario, angle });
+    expect(params?.system).toEqual(scenarioCall.sent[0]?.system);
+    const schema = JSON.stringify(params?.output_config?.format);
+    expect(schema).toContain('"prospect"');
+    expect(schema).toContain('"gender"');
+
+    expect(demo.prospect).toEqual(briefDraft.prospect);
+    expect(demo.meeting).toBe('A site visit at the Harrogate home, Tuesday at 2pm');
+    // It started with the rep, so the prospect answers the phone first.
+    expect(demo.lines[0]).toEqual({
+      speaker: 'prospect',
+      text: 'Hello?',
+      technique: null,
+      note: null,
+    });
   });
 
   it('refuses a prospect whose rubric is not loaded, before spending anything', async () => {

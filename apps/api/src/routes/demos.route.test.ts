@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { DemoDetail, DemoListResponse, ScenarioListResponse } from '@ccc/contracts';
+import {
+  CreateDemoResponse,
+  DemoDetail,
+  DemoListResponse,
+  ScenarioListResponse,
+} from '@ccc/contracts';
 import { DEMO_ANGLES, demoPlan } from '@ccc/core';
 import { eq, inArray, notInArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -8,14 +13,16 @@ import { buildApp } from '../app.ts';
 import { loadConfig } from '../config.ts';
 import { createDb } from '../db/client.ts';
 import { demoTurns, demos } from '../db/schema.ts';
-import { MAX_ATTEMPTS } from '../demos/store.ts';
+import { MAX_ATTEMPTS, claimDemo, failDemo, queueBriefDemo, queueDemos } from '../demos/store.ts';
 import { NO_DEMO_WRITER_MESSAGE } from '../demos/writer.ts';
 import { testCatalog } from '../test/catalog.ts';
 import { databaseAvailable, testDatabaseUrl } from '../test/db.ts';
-import { stubDemoWriter, writtenDemo } from '../test/demos.ts';
+import { briefProspect, stubDemoWriter, writtenDemo } from '../test/demos.ts';
 
 const hasDb = await databaseAvailable();
 const BROKEN = DEMO_ANGLES[2]!;
+const BRIEF =
+  'Tom Reid, head of estates at Carewell, 14 care homes in Yorkshire. Gas bills doubled last winter. Objective: a site visit.';
 
 describe.skipIf(!hasDb)('demo call routes (real Postgres)', () => {
   const { pool, db } = createDb(testDatabaseUrl);
@@ -81,7 +88,10 @@ describe.skipIf(!hasDb)('demo call routes (real Postgres)', () => {
       role: 'Operations Manager',
       company: 'Northgate Bakeries',
       difficulty: 'easy',
+      gender: 'female',
+      locale: 'en-GB',
     });
+    expect(waiting[0]).toMatchObject({ brief: null, angle: DEMO_ANGLES[0] });
     const again = await app.inject({ method: 'POST', url: '/api/demos/generate', payload: {} });
     expect(again.statusCode).toBe(409);
     expect(again.json()).toEqual({
@@ -182,11 +192,60 @@ describe.skipIf(!hasDb)('demo call routes (real Postgres)', () => {
     expect(turns).toEqual([]);
   });
 
+  it("writes one demo from the rep's brief, keeping who Claude made the prospect", async () => {
+    const short = await app.inject({
+      method: 'POST',
+      url: '/api/demos',
+      payload: { brief: 'Too short' },
+    });
+    expect(short.statusCode).toBe(400);
+    expect(short.json()).toEqual({
+      error: 'Say a little more: who you are calling, their business and what you want.',
+    });
+
+    const res = await app.inject({ method: 'POST', url: '/api/demos', payload: { brief: BRIEF } });
+    expect(res.statusCode).toBe(202);
+    const { id } = CreateDemoResponse.parse(res.json());
+    await app.demoQueue.idle();
+
+    expect(stub.briefs).toEqual([BRIEF]);
+    const demo = await detail(id);
+    expect(demo).toMatchObject({
+      status: 'ready',
+      position: 1,
+      brief: BRIEF,
+      angle: null,
+      prospect: briefProspect,
+      outcome: 'objective_met',
+      outcomeDetail: writtenDemo.meeting,
+    });
+    expect(demo.turns).toHaveLength(writtenDemo.lines.length);
+    expect((await list()).find((d) => d.id === id)).toMatchObject({ prospect: briefProspect });
+  });
+
+  it('writes a demo from a brief ahead of a batch already waiting', async () => {
+    await queueDemos(db, ['hard-facilities-manager'], 2);
+    const briefId = await queueBriefDemo(db, BRIEF);
+    const first = await claimDemo(db);
+    expect(first).toEqual({ id: briefId, kind: 'brief', brief: BRIEF });
+    const second = await claimDemo(db);
+    expect(second).toMatchObject({ kind: 'scenario', scenarioId: 'hard-facilities-manager' });
+    // Settle what this test claimed, so nothing is left waiting.
+    for (const job of [first, second, await claimDemo(db)]) {
+      if (job) await failDemo(db, job.id, 'set aside by the route tests');
+    }
+    expect(await claimDemo(db)).toBeNull();
+  });
+
   it('says why when demos cannot be written, and 404s an unknown demo', async () => {
     const off = await build(null);
     try {
-      for (const url of ['/api/demos/generate', '/api/demos/retry']) {
-        const res = await off.inject({ method: 'POST', url, payload: {} });
+      for (const [url, payload] of [
+        ['/api/demos/generate', {}],
+        ['/api/demos/retry', {}],
+        ['/api/demos', { brief: BRIEF }],
+      ] as const) {
+        const res = await off.inject({ method: 'POST', url, payload });
         expect(res.statusCode).toBe(503);
         expect(res.json()).toEqual({ error: NO_DEMO_WRITER_MESSAGE });
       }

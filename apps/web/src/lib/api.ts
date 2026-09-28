@@ -4,6 +4,8 @@ import {
   CallListResponse,
   type CreateCallRequest,
   CreateCallResponse,
+  type CreateDemoRequest,
+  CreateDemoResponse,
   type CreateScenarioRequest,
   CreateScenarioResponse,
   DemoDetail,
@@ -116,6 +118,11 @@ export function generateDemos(count: number): Promise<GenerateDemosResponse> {
     method: 'POST',
     body: JSON.stringify({ count }),
   });
+}
+
+/** `POST /api/demos`: one demo call written from the rep's brief; Claude writes it next. */
+export function createDemo(body: CreateDemoRequest): Promise<CreateDemoResponse> {
+  return request(CreateDemoResponse, '/api/demos', { method: 'POST', body: JSON.stringify(body) });
 }
 
 /** `POST /api/demos/retry`: puts the failed demo calls back in the queue. */

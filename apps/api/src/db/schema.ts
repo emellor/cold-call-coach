@@ -6,6 +6,7 @@ import type {
   CallPhase,
   DebugLatencyPayload,
   DemoOutcome,
+  DemoProspect,
   DemoStatus,
   Difficulty,
   EventKind,
@@ -141,9 +142,13 @@ export const demos = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     batchId: uuid('batch_id').notNull(),
     position: integer('position').notNull(),
-    scenarioId: text('scenario_id').notNull(),
+    /** Null for a demo written from the rep's brief (migration 0008). */
+    scenarioId: text('scenario_id'),
     scenarioVersion: integer('scenario_version'),
-    angle: text('angle').notNull(),
+    angle: text('angle'),
+    brief: text('brief'),
+    /** Who a demo from a brief called, as Claude wrote them. */
+    prospect: jsonb('prospect').$type<DemoProspect>(),
     status: text('status').$type<DemoStatus>().notNull().default('queued'),
     attempts: integer('attempts').notNull().default(0),
     claimedAt: timestamptz('claimed_at'),

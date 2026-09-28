@@ -1,12 +1,13 @@
-// Demo calls: model cold calls to read. An expert rep calls the prospects, a
-// different approach each time, and every line the rep says carries the
-// technique behind it. Generating them spends money, so the button says how
-// much first.
+// Demo calls: model cold calls to read or listen to. An expert rep calls the
+// prospects, a different approach each time, or whoever the rep describes in a
+// brief, and every line the rep says carries the technique behind it. Writing
+// them spends money, so the buttons say how much first.
 import { type DemoSummary, MAX_DEMO_BATCH } from '@ccc/contracts';
 import { useState } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { AppHeader } from '../components/AppHeader.tsx';
 import { generateDemos, retryDemos } from '../lib/api.ts';
+import { BriefDemoDialog } from './BriefDemoDialog.tsx';
 import { DIFFICULTY_STYLE, GENERATE_CONFIRM, OUTCOME_CHIP, STATUS_CHIP } from './labels.ts';
 import { useDemos, writing } from './useDemos.ts';
 
@@ -16,11 +17,15 @@ function DemoCard({ demo }: { demo: DemoSummary }) {
   const body = (
     <>
       <div className="flex items-center justify-between gap-2 text-xs">
-        <span className="font-mono text-slate-500">#{demo.position}</span>
+        {demo.brief ? (
+          <span className="text-slate-400">From your brief</span>
+        ) : (
+          <span className="font-mono text-slate-500">#{demo.position}</span>
+        )}
         <span className={`rounded-full px-2 py-0.5 font-medium ${chip.style}`}>{chip.label}</span>
       </div>
       <p className="mt-2 font-medium text-slate-100">
-        {demo.title ?? `Demo call ${demo.position}`}
+        {demo.title ?? (demo.brief ? 'Demo call from your brief' : `Demo call ${demo.position}`)}
       </p>
       {demo.prospect && (
         <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-400">
@@ -34,14 +39,24 @@ function DemoCard({ demo }: { demo: DemoSummary }) {
           </span>
         </p>
       )}
-      <p className="mt-2 line-clamp-2 text-sm text-slate-400">
-        <span className="text-slate-500">Approach: </span>
-        {demo.angle}
-      </p>
+      {demo.angle && (
+        <p className="mt-2 line-clamp-2 text-sm text-slate-400">
+          <span className="text-slate-500">Approach: </span>
+          {demo.angle}
+        </p>
+      )}
+      {demo.brief && (
+        <p className="mt-2 line-clamp-2 text-sm text-slate-400">
+          <span className="text-slate-500">Your brief: </span>
+          {demo.brief}
+        </p>
+      )}
       {demo.status === 'failed' && demo.error && (
         <p className="mt-2 line-clamp-3 text-sm text-rose-300">{demo.error}</p>
       )}
-      {demo.status === 'ready' && <p className="mt-2 text-xs text-sky-300">Read the call →</p>}
+      {demo.status === 'ready' && (
+        <p className="mt-2 text-xs text-sky-300">Read or listen to the call →</p>
+      )}
     </>
   );
   const card = 'block h-full rounded-xl border border-slate-800 bg-slate-900/60 p-4';
@@ -96,10 +111,15 @@ function Progress({ demos }: { demos: readonly DemoSummary[] }) {
 
 export function DemosPage() {
   const { state, reload } = useDemos();
+  const [, navigate] = useLocation();
   const [busy, setBusy] = useState(false);
+  const [briefOpen, setBriefOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const demos = state.status === 'ready' ? state.demos : [];
+  // The API refuses a new batch while any demo is being written, a brief's included.
   const inProgress = writing(demos);
+  // The progress bar follows batches; a demo from a brief shows on its own card.
+  const batches = demos.filter((d) => d.brief === null);
   const failed = demos.filter((d) => d.status === 'failed').length;
 
   const act = async (run: () => Promise<unknown>) => {
@@ -123,9 +143,10 @@ export function DemosPage() {
           <div className="max-w-2xl">
             <h2 className="text-xl font-semibold">Demo calls</h2>
             <p className="mt-1 text-sm text-slate-300">
-              Model cold calls to read: an expert rep calls your prospects, taking a different
-              approach each time. Open one to read the whole call, with the technique behind every
-              line the rep says and why it works at that point.
+              Model cold calls to read or listen to: an expert rep calls your prospects, taking a
+              different approach each time, or the person you describe in a brief. Open one for the
+              whole call, with the technique behind every line the rep says and why it works at that
+              point.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -145,12 +166,26 @@ export function DemosPage() {
                 if (window.confirm(GENERATE_CONFIRM)) void act(() => generateDemos(MAX_DEMO_BATCH));
               }}
               disabled={busy || inProgress || state.status !== 'ready'}
-              className="rounded-full bg-sky-600 px-5 py-2 text-sm font-medium text-white hover:bg-sky-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300 disabled:opacity-50"
+              className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:border-slate-500 focus-visible:outline-2 focus-visible:outline-sky-400 disabled:opacity-50"
             >
               Generate {MAX_DEMO_BATCH} demo calls
             </button>
+            <button
+              type="button"
+              onClick={() => setBriefOpen(true)}
+              className="rounded-full bg-sky-600 px-5 py-2 text-sm font-medium text-white hover:bg-sky-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
+            >
+              Write one from your brief
+            </button>
           </div>
         </section>
+
+        {briefOpen && (
+          <BriefDemoDialog
+            onClose={() => setBriefOpen(false)}
+            onCreated={({ id }) => navigate(`/demos/${id}`)}
+          />
+        )}
 
         {notice && (
           <p role="alert" className="text-sm text-rose-300">
@@ -163,10 +198,11 @@ export function DemosPage() {
             {state.message}
           </p>
         )}
-        {inProgress && <Progress demos={demos} />}
+        {writing(batches) && <Progress demos={batches} />}
         {state.status === 'ready' && demos.length === 0 && (
           <p className="text-slate-400">
-            No demo calls yet. Generate some, and Claude writes them in the background.
+            No demo calls yet. Write one from your brief, or generate a batch and Claude writes them
+            in the background.
           </p>
         )}
         {demos.length > 0 && (
