@@ -10,6 +10,10 @@ describe('modelCapabilities', () => {
     });
   });
 
+  it('gives Opus 5.5 the same, refusal fallbacks included', () => {
+    expect(modelCapabilities('claude-opus-5-5')).toEqual(modelCapabilities('claude-opus-5'));
+  });
+
   it('gives Haiku 4.5 none of them (PLAN.md §6.5)', () => {
     expect(modelCapabilities('claude-haiku-4-5')).toEqual({
       effort: false,

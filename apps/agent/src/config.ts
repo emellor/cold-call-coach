@@ -56,10 +56,10 @@ const CallConfig = z.object({
       .transform((url) => url.replace(/\/+$/, '')),
   ),
   INTERNAL_API_SECRET: nonEmpty(),
-  PROSPECT_MODEL: blankAsUnset(z.string().min(1).default('claude-opus-5')),
+  PROSPECT_MODEL: blankAsUnset(z.string().min(1).default('claude-opus-5-5')),
   PROSPECT_EFFORT: blankAsUnset(Effort.default('low')),
   /** The judge (and, from M5, the coach's hints). */
-  COACH_MODEL: blankAsUnset(z.string().min(1).default('claude-opus-5')),
+  COACH_MODEL: blankAsUnset(z.string().min(1).default('claude-opus-5-5')),
   COACH_EFFORT: blankAsUnset(Effort.default('low')),
   /**
    * `multilingual` is PLAN.md's text-based detector (@livekit/agents-plugin-livekit,

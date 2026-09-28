@@ -83,9 +83,9 @@ describe('readCallConfig', () => {
       config: {
         ...keys,
         API_BASE_URL: 'http://localhost:3000',
-        PROSPECT_MODEL: 'claude-opus-5',
+        PROSPECT_MODEL: 'claude-opus-5-5',
         PROSPECT_EFFORT: 'low',
-        COACH_MODEL: 'claude-opus-5',
+        COACH_MODEL: 'claude-opus-5-5',
         COACH_EFFORT: 'low',
         TURN_DETECTOR: 'multilingual',
       },

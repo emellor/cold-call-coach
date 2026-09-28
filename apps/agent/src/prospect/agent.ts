@@ -184,6 +184,8 @@ function logUsage(logger: Logger, message: BetaMessage, actions: readonly Prospe
       model: message.model,
       stopReason: message.stop_reason,
       tools: actions.map((a) => a.type),
+      // False when Claude wrote no text: a reply that was only a tool call gets the closing line.
+      spoke: message.content.some((b) => b.type === 'text' && b.text.length > 0),
       inputTokens: usage.input_tokens,
       cacheReadInputTokens: usage.cache_read_input_tokens,
       cacheCreationInputTokens: usage.cache_creation_input_tokens,

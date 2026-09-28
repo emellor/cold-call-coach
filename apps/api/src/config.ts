@@ -42,7 +42,7 @@ const Config = z.object({
   ANTHROPIC_API_KEY: optional(z.string().min(1)),
   // Only for a key that belongs to the organization, not a workspace: the workspace to use.
   ANTHROPIC_WORKSPACE_ID: optional(z.string().regex(WORKSPACE_ID, WORKSPACE_ID_PROBLEM)),
-  REVIEW_MODEL: z.preprocess(cleaned, z.string().min(1).default('claude-opus-5')),
+  REVIEW_MODEL: z.preprocess(cleaned, z.string().min(1).default('claude-opus-5-5')),
   REVIEW_EFFORT: z.preprocess(
     cleaned,
     z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('high'),

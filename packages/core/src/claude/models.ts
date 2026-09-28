@@ -21,7 +21,7 @@ const CONSERVATIVE: ModelCapabilities = {
 const FAMILIES: ReadonlyArray<[RegExp, ModelCapabilities]> = [
   [/^claude-opus-5$/, { effort: true, midConversationSystem: true, serverFallbacks: true }],
   [/^claude-fable-5-1$/, { effort: true, midConversationSystem: true, serverFallbacks: true }],
-  [/^claude-opus-5-5$/, { effort: true, midConversationSystem: true, serverFallbacks: false }],
+  [/^claude-opus-5-5$/, { effort: true, midConversationSystem: true, serverFallbacks: true }],
   [/^claude-fable-5$/, { effort: true, midConversationSystem: true, serverFallbacks: false }],
   [/^claude-opus-4-8$/, { effort: true, midConversationSystem: true, serverFallbacks: false }],
   [/^claude-sonnet-5$/, { effort: true, midConversationSystem: false, serverFallbacks: false }],

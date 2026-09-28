@@ -13,8 +13,12 @@ import {
 } from '@ccc/core';
 import { PROSPECT_TOOLS } from '../prospect/tools.ts';
 
-/** Room for one or two spoken sentences, a tool call, and any adaptive thinking at low effort. */
-export const PROSPECT_MAX_TOKENS = 512;
+/**
+ * Room for one or two spoken sentences, a tool call, and the adaptive thinking
+ * before them at low effort. On Opus 5 a reply took at most 166 tokens; Opus 5.5
+ * thinks more at the same effort, and a reply cut short is heard cut short.
+ */
+export const PROSPECT_MAX_TOKENS = 1_024;
 
 /** The judge's JSON is small; the rest is headroom for adaptive thinking. */
 export const JUDGE_MAX_TOKENS = 2048;

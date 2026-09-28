@@ -146,7 +146,7 @@ scores the call as it stands after them: a rewound turn is not in the transcript
 
 Hang up (or get hung up on) and the page moves to the call's review. The agent sends
 the call log to the API as the call ends, and the API reviews it with Claude
-(`REVIEW_MODEL`, default `claude-opus-5` at `REVIEW_EFFORT=high`):
+(`REVIEW_MODEL`, default `claude-opus-5-5` at `REVIEW_EFFORT=high`):
 
 - **Your next call**: the three changes that would most improve it, most important first;
 - **Turn by turn**: the call walked through in order, each moment at its time. A mistake
@@ -213,8 +213,11 @@ A call over **$2** (`warnAboveUsd` in the same file) is flagged three ways:
 
 Claude is most of the cost. Her replies and the judge run on every turn you take, so
 `PROSPECT_MODEL`, `COACH_MODEL` and their efforts matter most. The prompt cache makes
-every turn after the first cheaper. `claude-sonnet-5` costs 40% as much per token as Opus 5.
-`claude-haiku-4-5` costs a fifth as much, but it caches nothing shorter than 4,096 tokens and
+every turn after the first cheaper. Every lane defaults to `claude-opus-5-5`, which costs
+a fifth less per token than `claude-opus-5`, and 60% less for cache reads.
+`claude-sonnet-5` costs half as much per input or output token as Opus 5.5, and the same
+for cache reads.
+`claude-haiku-4-5` costs a quarter as much, but it caches nothing shorter than 4,096 tokens and
 her prompts are shorter, so per call it saves little more than Sonnet 5. The voice costs
 little by comparison: in the current table,
 Deepgram is $0.0077 a minute and Cartesia $0.05 per 1,000 characters.

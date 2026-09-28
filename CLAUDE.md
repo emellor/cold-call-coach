@@ -21,7 +21,9 @@ Before starting any milestone, read docs/PLAN.md and the matching prompt in docs
 
 - Load the `claude-api` skill before writing Claude API code.
 - Model and effort come from env, per lane.
-- Never send sampling parameters to Opus 5.
+- Never send sampling parameters to Opus 5 or 5.5. Opus 5.5 also refuses
+  `thinking: { type: 'disabled' }` and a forced `tool_choice` with a 400: effort is the
+  only control over how much it thinks.
 
 **Pipeline rules**
 

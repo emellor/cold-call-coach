@@ -70,7 +70,8 @@ export interface Usage {
 export const speakingSeconds = (text: string): number =>
   text.split(/\s+/).filter(Boolean).length / 2.5;
 
-const REP_MAX_TOKENS = 600;
+/** A rep line and the thinking before it at low effort, as for her replies. */
+const REP_MAX_TOKENS = 1_024;
 
 function addUsage(usage: Usage, message: Pick<BetaMessage, 'usage'>): void {
   usage.calls += 1;
