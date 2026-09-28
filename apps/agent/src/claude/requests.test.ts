@@ -32,6 +32,24 @@ describe('prospectRequest', () => {
     });
   });
 
+  it('sends Opus 5.5 the same, never a thinking setting or a forced tool, which it refuses', () => {
+    const request = prospectRequest({ ...base, model: 'claude-opus-5-5' });
+    expect(request).toEqual({
+      ...prospectRequest({ ...base, model: 'claude-opus-5' }),
+      model: 'claude-opus-5-5',
+    });
+    for (const lane of [
+      request,
+      judgeRequest({ model: 'claude-opus-5-5', effort: 'low', system: 's', user: 'u' }),
+      hintRequest({ model: 'claude-opus-5-5', effort: 'low', system: 's', user: 'u' }),
+    ]) {
+      expect(lane).not.toHaveProperty('thinking');
+      expect(lane).not.toHaveProperty('tool_choice');
+      expect(lane).not.toHaveProperty('temperature');
+      expect(lane).toMatchObject({ fallbacks: 'default', output_config: { effort: 'low' } });
+    }
+  });
+
   it('omits effort and fallbacks for Haiku 4.5, which accepts neither', () => {
     const request = prospectRequest({ ...base, model: 'claude-haiku-4-5' });
     expect(request).not.toHaveProperty('output_config');

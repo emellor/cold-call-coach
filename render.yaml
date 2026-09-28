@@ -46,7 +46,7 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: REVIEW_MODEL
-        value: claude-opus-5
+        value: claude-opus-5-5
       - key: REVIEW_EFFORT
         value: high
       # Optional: "Add new" chooses each new prospect a voice from Cartesia's
@@ -100,11 +100,11 @@ services:
       - key: TURN_DETECTOR
         value: audio
       - key: PROSPECT_MODEL
-        value: claude-opus-5
+        value: claude-opus-5-5
       - key: PROSPECT_EFFORT
         value: low
       - key: COACH_MODEL
-        value: claude-opus-5
+        value: claude-opus-5-5
       - key: COACH_EFFORT
         value: low
 

@@ -12,8 +12,11 @@ import {
   type VoiceChoice,
 } from '@ccc/contracts';
 
-/** A draft is ~1k tokens of JSON; this leaves room without inviting an essay. */
-export const PROSPECT_WRITER_MAX_TOKENS = 4_096;
+/**
+ * A draft is ~1k tokens of JSON; the rest is room for the thinking before it at
+ * medium effort, which Opus 5.5 does more of than Opus 5 did.
+ */
+export const PROSPECT_WRITER_MAX_TOKENS = 8_192;
 
 export class ProspectDraftError extends Error {
   override name = 'ProspectDraftError';
