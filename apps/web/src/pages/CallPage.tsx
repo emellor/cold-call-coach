@@ -6,7 +6,7 @@ import {
   useVoiceAssistant,
 } from '@livekit/components-react';
 import { useEffect, useState } from 'react';
-import { Link, useLocation } from 'wouter';
+import { Link, useLocation, useSearch } from 'wouter';
 import { AppHeader } from '../components/AppHeader.tsx';
 import { CoachPanel } from '../call/CoachPanel.tsx';
 import { ProspectStage } from '../call/ProspectStage.tsx';
@@ -56,6 +56,14 @@ export function CallPage() {
 
   const scenarios = useScenarios();
   const [chosenId, setChosenId] = usePersistentString('ccc.scenario');
+  // "/?prospect=<id>" (a demo's "Practise this call") picks her, then the address tidies up.
+  const search = useSearch();
+  useEffect(() => {
+    const wanted = new URLSearchParams(search).get('prospect');
+    if (!wanted) return;
+    setChosenId(wanted);
+    navigate('/', { replace: true });
+  }, [search, setChosenId, navigate]);
   const available = scenarios.status === 'ready' ? scenarios.scenarios : [];
   const selected = available.find((s) => s.id === chosenId) ?? available[0];
   // The call in progress (or just ended) keeps its prospect while the picker moves on.

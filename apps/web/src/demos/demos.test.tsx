@@ -58,6 +58,7 @@ const DETAIL: DemoDetail = {
   lessons: ['Ask for thirty seconds first.', 'Follow up on her exact words.'],
   outcomeDetail: 'Tuesday at 10am',
   costUsd: 0.08,
+  practiceProspect: null,
   turns: [
     {
       idx: 0,
@@ -389,6 +390,137 @@ describe('DemoPage', () => {
     expect(screen.getByText('Objective met')).toBeInTheDocument();
     expect(screen.getByText('Tom Reid, Head of Estates at Carewell')).toBeInTheDocument();
     expect(screen.queryByText(/The rep's approach/)).toBeNull();
+  });
+
+  describe('preparing for the call in a brief', () => {
+    const FROM_BRIEF: DemoDetail = {
+      ...DETAIL,
+      angle: null,
+      brief: BRIEF,
+      outcome: 'objective_met',
+      outcomeDetail: 'A site visit, Tuesday at 2pm',
+    };
+    const PRACTICE = {
+      id: 'claire-hughes-a1b2c3',
+      version: 1,
+      title: 'Claire Hughes, Harrow & Finch Logistics',
+      difficulty: 'medium',
+      winCondition: 'A 20-minute call with her and the MD.',
+      prospect: {
+        name: 'Claire Hughes',
+        role: 'Finance Director',
+        company: 'Harrow & Finch Logistics',
+      },
+      custom: true,
+    };
+
+    /** Serves the demo, and holds each POST until the test answers it. */
+    const serve = (demo: DemoDetail) => {
+      const posts: Array<[string, unknown]> = [];
+      const answers: Array<(value: Response) => void> = [];
+      vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+        if (urlOf(input) === '/api/health') {
+          return Promise.resolve(json(200, { ok: true, db: { ok: true, latencyMs: 1 } }));
+        }
+        if (init?.method === 'POST') {
+          posts.push([urlOf(input), init.body ? JSON.parse(init.body as string) : undefined]);
+          return new Promise((resolve) => answers.push(resolve));
+        }
+        return Promise.resolve(json(200, demo));
+      });
+      const location = memoryLocation({ path: `/demos/${ID}`, record: true });
+      render(
+        <Router hook={location.hook}>
+          <DemoPage id={ID} />
+        </Router>,
+      );
+      return { posts, answer: (res: Response) => answers.shift()?.(res), location };
+    };
+
+    it('adds the person in the brief to the prospects, then links to her on the Call page', async () => {
+      const { posts, answer } = serve(FROM_BRIEF);
+      const prepare = await screen.findByRole('region', { name: 'Prepare for this call' });
+      expect(within(prepare).queryByText(/Practice prospects are all women/)).toBeNull();
+
+      fireEvent.click(within(prepare).getByRole('button', { name: 'Practise this call' }));
+      expect(within(prepare).getByRole('status')).toHaveTextContent(
+        'Adding Claire to your prospects… about half a minute.',
+      );
+      expect(
+        within(prepare).getByRole('button', { name: 'Cheat sheet for this call' }),
+      ).toBeDisabled();
+      expect(posts).toEqual([[`/api/demos/${ID}/practice`, undefined]]);
+
+      answer(json(201, { scenario: PRACTICE }));
+      const practise = await within(prepare).findByRole('link', {
+        name: 'Practise the call with Claire →',
+      });
+      expect(practise).toHaveAttribute('href', '/?prospect=claire-hughes-a1b2c3');
+      expect(within(prepare).getByRole('status')).toHaveTextContent(
+        'Claire Hughes is in your prospects on the Call page.',
+      );
+      expect(within(prepare).queryByRole('button', { name: 'Practise this call' })).toBeNull();
+    });
+
+    it('links straight to the practice prospect once there is one', async () => {
+      serve({ ...FROM_BRIEF, practiceProspect: { id: PRACTICE.id, name: 'Claire Hughes' } });
+      const prepare = await screen.findByRole('region', { name: 'Prepare for this call' });
+      expect(
+        within(prepare).getByRole('link', { name: 'Practise the call with Claire →' }),
+      ).toHaveAttribute('href', '/?prospect=claire-hughes-a1b2c3');
+      expect(within(prepare).queryByRole('button', { name: 'Practise this call' })).toBeNull();
+    });
+
+    it('says a man in the brief is practised as a woman in the same job', async () => {
+      serve({
+        ...FROM_BRIEF,
+        prospect: {
+          name: 'Tom Reid',
+          role: 'Head of Estates',
+          company: 'Carewell',
+          difficulty: 'hard',
+          gender: 'male',
+          locale: 'en-GB',
+        },
+      });
+      const prepare = await screen.findByRole('region', { name: 'Prepare for this call' });
+      expect(prepare).toHaveTextContent(
+        'Practice prospects are all women for now, as the coaching is written that way: Tom becomes a woman in the same job.',
+      );
+      // She comes back with another name, so the wait doesn't promise Tom.
+      fireEvent.click(within(prepare).getByRole('button', { name: 'Practise this call' }));
+      expect(within(prepare).getByRole('status')).toHaveTextContent(
+        'Writing your practice prospect… about half a minute.',
+      );
+    });
+
+    it('says why practising failed, and lets the rep try again', async () => {
+      const { answer } = serve(FROM_BRIEF);
+      const prepare = await screen.findByRole('region', { name: 'Prepare for this call' });
+      const practise = within(prepare).getByRole('button', { name: 'Practise this call' });
+      fireEvent.click(practise);
+      answer(json(502, { error: 'Claude declined to write this prospect.' }));
+      expect(await within(prepare).findByRole('alert')).toHaveTextContent(
+        'Claude declined to write this prospect.',
+      );
+      expect(practise).toBeEnabled();
+    });
+
+    it('writes a cheat sheet from the brief and opens it', async () => {
+      const { posts, answer, location } = serve(FROM_BRIEF);
+      const prepare = await screen.findByRole('region', { name: 'Prepare for this call' });
+      fireEvent.click(within(prepare).getByRole('button', { name: 'Cheat sheet for this call' }));
+      expect(within(prepare).getByRole('status')).toHaveTextContent(
+        'Writing your cheat sheet… about half a minute.',
+      );
+      expect(within(prepare).getByRole('button', { name: 'Practise this call' })).toBeDisabled();
+      expect(posts).toEqual([['/api/cheat-sheets', { brief: BRIEF }]]);
+
+      answer(json(201, { id: '5c1e0a4e-2b1f-4f55-9a0c-6d3f1c1e8a10' }));
+      await waitFor(() =>
+        expect(location.history).toContain('/cheat-sheets/5c1e0a4e-2b1f-4f55-9a0c-6d3f1c1e8a10'),
+      );
+    });
   });
 
   it('says why a failed demo has no call to read', async () => {

@@ -85,6 +85,30 @@ describe('buildProspectWriterSystemPrompt', () => {
       'The rep\'s description of her:\n"""\nA tough broker.\n"""\n\nWrite this prospect.',
     );
   });
+
+  it('keeps her consistent with a model call the rep has read', () => {
+    const lines = ['Sarah Patel.', 'The car parks. The lighting runs all night.'];
+    const her = { role: 'Head of Estates', company: 'Carewell', difficulty: 'hard' as const };
+    const woman = buildProspectWriterUserPrompt('A brief.', {
+      prospect: { ...her, name: 'Sarah Patel', gender: 'female' },
+      lines,
+    });
+    expect(woman).toContain('"""\nA brief.\n"""');
+    expect(woman).toContain('wants to practise the same call');
+    expect(woman).toContain('how hard she is to win (hard)');
+    expect(woman).toContain('Keep her name: Sarah Patel, Head of Estates at Carewell.');
+    expect(woman).toContain('- "The car parks. The lighting runs all night."');
+    expect(woman.endsWith('Write this prospect.')).toBe(true);
+
+    // The app's prospects are women: a man keeps his job and situation, not his name.
+    const man = buildProspectWriterUserPrompt('A brief.', {
+      prospect: { ...her, name: 'Tom Reid', gender: 'male' },
+      lines,
+    });
+    expect(man).toContain('the prospect is a man, Tom Reid');
+    expect(man).toContain("a woman's name to match");
+    expect(man).not.toContain('Keep her name');
+  });
 });
 
 describe('prospectId', () => {
@@ -141,6 +165,16 @@ describe('scenarioFromDraft', () => {
   it('falls back to the first template when none shares her difficulty', () => {
     const easy = { ...draft, difficulty: 'easy' as const };
     expect(scenarioFromDraft(easy, { id: 'x-1', templates }).state).toEqual(scenario.state);
+  });
+
+  it("keeps a demo's difficulty over the draft's, with that difficulty's thresholds", () => {
+    const spec = scenarioFromDraft(draft, {
+      id: 'x-1',
+      templates,
+      difficulty: scenario.difficulty,
+    });
+    expect(spec.difficulty).toBe(scenario.difficulty);
+    expect(spec.state).toEqual(scenario.state);
   });
 
   it('refuses a draft that is missing what a call needs', () => {

@@ -5,10 +5,10 @@
 // so the page checks back until it is.
 import type { DemoDetail, DemoTurn } from '@ccc/contracts';
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { AppHeader } from '../components/AppHeader.tsx';
 import { PauseIcon, PlayIcon, SpeakerIcon, StopIcon } from '../components/icons.tsx';
-import { ApiRequestError, fetchDemo } from '../lib/api.ts';
+import { ApiRequestError, createCheatSheet, fetchDemo, practiseDemo } from '../lib/api.ts';
 import { DIFFICULTY_STYLE, OUTCOME_CHIP } from './labels.ts';
 import { READING_RATES, useCallReader } from './useCallReader.ts';
 
@@ -192,6 +192,9 @@ function Loaded({ demo }: { demo: DemoDetail }) {
           </div>
         )}
       </section>
+      {demo.status === 'ready' && demo.brief && (
+        <PrepareForTheCall demo={demo} brief={demo.brief} />
+      )}
       {demo.status === 'ready' ? (
         <TheCall demo={demo} prospectFirstName={firstName} />
       ) : demo.status === 'failed' ? (
@@ -205,6 +208,108 @@ function Loaded({ demo }: { demo: DemoDetail }) {
         </p>
       )}
     </>
+  );
+}
+
+/**
+ * A demo from a brief is about a call the rep is going to make: practise it
+ * against the same person, or take a cheat sheet into the real one.
+ */
+function PrepareForTheCall({ demo, brief }: { demo: DemoDetail; brief: string }) {
+  const [, navigate] = useLocation();
+  const [practice, setPractice] = useState(demo.practiceProspect);
+  const [busy, setBusy] = useState<'practice' | 'sheet' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const firstName = demo.prospect?.name.split(' ')[0] ?? 'them';
+
+  const run = async (what: 'practice' | 'sheet', action: () => Promise<void>) => {
+    setBusy(what);
+    setError(null);
+    try {
+      await action();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // A man in the brief comes back as a woman with another name, so he isn't named here.
+  const male = demo.prospect?.gender === 'male';
+  const status =
+    busy === 'practice'
+      ? male
+        ? 'Writing your practice prospect… about half a minute.'
+        : `Adding ${firstName} to your prospects… about half a minute.`
+      : busy === 'sheet'
+        ? 'Writing your cheat sheet… about half a minute.'
+        : practice
+          ? `${practice.name} is in your prospects on the Call page.`
+          : 'Practise the call yourself, live, against the same person, or take a cheat sheet into the real one. Each is one request to Claude, 5 to 10 cents.';
+
+  return (
+    <section
+      aria-labelledby="prepare"
+      className="rounded-xl border border-sky-900 bg-sky-950/30 p-4"
+    >
+      <h3 id="prepare" className="text-sm font-medium tracking-wide text-slate-300 uppercase">
+        Prepare for this call
+      </h3>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {practice ? (
+          <Link
+            href={`/?prospect=${encodeURIComponent(practice.id)}`}
+            className="rounded-full bg-sky-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
+          >
+            Practise the call with {practice.name.split(' ')[0]} →
+          </Link>
+        ) : (
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() =>
+              void run('practice', async () => {
+                const { scenario } = await practiseDemo(demo.id);
+                setPractice({ id: scenario.id, name: scenario.prospect.name });
+              })
+            }
+            className="rounded-full bg-sky-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300 disabled:opacity-50"
+          >
+            Practise this call
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() =>
+            void run('sheet', async () => {
+              const { id } = await createCheatSheet({ brief });
+              navigate(`/cheat-sheets/${id}`);
+            })
+          }
+          className="rounded-full border border-slate-700 px-4 py-1.5 text-sm text-slate-200 hover:border-slate-500 focus-visible:outline-2 focus-visible:outline-sky-400 disabled:opacity-50"
+        >
+          Cheat sheet for this call
+        </button>
+      </div>
+      <p
+        role="status"
+        className={`mt-2 text-xs text-slate-400 ${busy ? 'animate-pulse motion-reduce:animate-none' : ''}`}
+      >
+        {status}
+      </p>
+      {!practice && male && (
+        <p className="mt-1 text-xs text-slate-500">
+          Practice prospects are all women for now, as the coaching is written that way: {firstName}{' '}
+          becomes a woman in the same job.
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="mt-2 text-sm text-rose-300">
+          {error}
+        </p>
+      )}
+    </section>
   );
 }
 

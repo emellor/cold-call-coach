@@ -5,6 +5,7 @@
 // writes and stores them; the web shows the transcript and reads it aloud.
 import { z } from 'zod';
 import { Speaker } from './callLog.ts';
+import { ScenarioSummary } from './http.ts';
 import { ProspectLocale } from './prospectDraft.ts';
 import { Difficulty } from './scenario.ts';
 
@@ -88,6 +89,8 @@ export const DemoDetail = DemoSummary.extend({
   turns: z.array(DemoTurn),
   /** What writing it cost; null if the model wasn't priced. */
   costUsd: z.number().nullable(),
+  /** The prospect added to practise this call, while she is still in the picker. */
+  practiceProspect: z.object({ id: z.string(), name: z.string() }).nullable(),
 });
 export type DemoDetail = z.infer<typeof DemoDetail>;
 
@@ -118,6 +121,13 @@ export type CreateDemoRequest = z.infer<typeof CreateDemoRequest>;
 
 export const CreateDemoResponse = z.object({ id: z.uuid() });
 export type CreateDemoResponse = z.infer<typeof CreateDemoResponse>;
+
+/**
+ * `POST /api/demos/:id/practice`: the prospect from a demo's brief, added to
+ * the picker so the rep can practise that call (201), or the one already added (200).
+ */
+export const PracticeProspectResponse = z.object({ scenario: ScenarioSummary });
+export type PracticeProspectResponse = z.infer<typeof PracticeProspectResponse>;
 
 /**
  * What Claude writes for a demo call (structured output): the whole call, line

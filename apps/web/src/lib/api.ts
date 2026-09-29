@@ -2,8 +2,12 @@ import {
   ApiError,
   CallDetail,
   CallListResponse,
+  CheatSheetDetail,
+  CheatSheetListResponse,
   type CreateCallRequest,
   CreateCallResponse,
+  type CreateCheatSheetRequest,
+  CreateCheatSheetResponse,
   type CreateDemoRequest,
   CreateDemoResponse,
   type CreateScenarioRequest,
@@ -13,6 +17,7 @@ import {
   GenerateDemosResponse,
   HealthResponse,
   type LoginRequest,
+  PracticeProspectResponse,
   ReviewRerunResponse,
   ScenarioListResponse,
   SessionResponse,
@@ -123,6 +128,42 @@ export function generateDemos(count: number): Promise<GenerateDemosResponse> {
 /** `POST /api/demos`: one demo call written from the rep's brief; Claude writes it next. */
 export function createDemo(body: CreateDemoRequest): Promise<CreateDemoResponse> {
   return request(CreateDemoResponse, '/api/demos', { method: 'POST', body: JSON.stringify(body) });
+}
+
+/** `POST /api/demos/:id/practice`: adds a brief demo's prospect to the picker, once. */
+export function practiseDemo(id: string): Promise<PracticeProspectResponse> {
+  return request(PracticeProspectResponse, `/api/demos/${encodeURIComponent(id)}/practice`, {
+    method: 'POST',
+  });
+}
+
+/** `GET /api/cheat-sheets`: newest first. */
+export function fetchCheatSheets(signal?: AbortSignal): Promise<CheatSheetListResponse> {
+  return request(CheatSheetListResponse, '/api/cheat-sheets', { signal });
+}
+
+/** `GET /api/cheat-sheets/:id` */
+export function fetchCheatSheet(id: string, signal?: AbortSignal): Promise<CheatSheetDetail> {
+  return request(CheatSheetDetail, `/api/cheat-sheets/${encodeURIComponent(id)}`, { signal });
+}
+
+/** `POST /api/cheat-sheets`: Claude writes it while you wait, about half a minute. */
+export function createCheatSheet(body: CreateCheatSheetRequest): Promise<CreateCheatSheetResponse> {
+  return request(CreateCheatSheetResponse, '/api/cheat-sheets', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/** `DELETE /api/cheat-sheets/:id` */
+export async function deleteCheatSheet(id: string): Promise<void> {
+  const res = await send(`/api/cheat-sheets/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (res.ok) return;
+  const error = ApiError.safeParse(await res.json().catch(() => null));
+  throw new ApiRequestError(
+    res.status,
+    error.success ? error.data.error : `Couldn't delete it (${res.status}).`,
+  );
 }
 
 /** `POST /api/demos/retry`: puts the failed demo calls back in the queue. */

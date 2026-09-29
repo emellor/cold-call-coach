@@ -1,22 +1,37 @@
-// "Write from your brief": the rep describes the call they are about to make,
-// who they are calling, the business and what they want from it, and Claude
-// writes the 10/10 version of that call. One request, about 10 cents.
-import { type CreateDemoResponse, MIN_BRIEF_LENGTH } from '@ccc/contracts';
+// The rep describes a call they're about to make: who they're calling, the
+// business and what they want from it. A demo call and a cheat sheet are both
+// written from one of these; each page says what it writes and what it costs.
+import { MIN_BRIEF_LENGTH } from '@ccc/contracts';
 import { type FormEvent, useEffect, useId, useState } from 'react';
-import { createDemo } from '../lib/api.ts';
-import { BRIEF_EXAMPLES } from './labels.ts';
 
-export function BriefDemoDialog(props: {
+/** Briefs to start from, as a rep might write them. */
+const BRIEF_EXAMPLES = [
+  "Sarah Patel, Head of Estates at Carewell, 14 care homes across Yorkshire. Their gas bills doubled last winter and the board wants answers. She's busy and wary of salespeople. I want a 20-minute call to show her site-by-site monitoring.",
+  'Mark Jones, operations director at a food manufacturer with three factories in the Midlands. Energy is his second-biggest cost after staff, and ESOS Phase 4 is coming. Objective: a site visit to their biggest plant.',
+  'The finance director of a regional chain of 30 gyms. They fixed their energy contract last year and think they are sorted. Objective: agree to a 15-minute call with our energy analyst.',
+] as const;
+
+export function BriefDialog(props: {
+  title: string;
+  /** What Claude writes from the brief. */
+  intro: string;
+  submitLabel: string;
+  /** What it costs and how long it takes, above the buttons. */
+  note: string;
+  /** Shown while it's being written, when that takes the rep's time. */
+  busyText?: string;
+  /** Writes it; a rejection is shown in the dialog, and the rep can try again. */
+  onSubmit: (brief: string) => Promise<void>;
   onClose: () => void;
-  onCreated: (created: CreateDemoResponse) => void;
 }) {
-  const { onClose, onCreated } = props;
+  const { title, intro, submitLabel, note, busyText, onSubmit, onClose } = props;
   const [brief, setBrief] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const titleId = useId();
   const hintId = useId();
 
+  // Escape closes it, unless it's being written: it would be kept all the same.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !busy) onClose();
@@ -30,7 +45,7 @@ export function BriefDemoDialog(props: {
     setBusy(true);
     setError(null);
     try {
-      onCreated(await createDemo({ brief }));
+      await onSubmit(brief);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
       setBusy(false);
@@ -48,12 +63,9 @@ export function BriefDemoDialog(props: {
         className="flex max-h-full w-full max-w-lg flex-col gap-3 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"
       >
         <h2 id={titleId} className="text-lg font-semibold">
-          Write a demo call from your brief
+          {title}
         </h2>
-        <p className="text-sm text-slate-300">
-          Describe the call you're about to make, and Claude writes the 10/10 version of it: every
-          line, with the technique behind each thing the rep says.
-        </p>
+        <p className="text-sm text-slate-300">{intro}</p>
         <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-200">
           Who are you calling, and what do you want from the call?
           <textarea
@@ -96,9 +108,16 @@ export function BriefDemoDialog(props: {
             {error}
           </p>
         )}
-        <p className="text-xs text-slate-500">
-          One request to Claude: about 10 cents, and about a minute to write.
-        </p>
+        {busy && busyText ? (
+          <p
+            role="status"
+            className="animate-pulse text-sm text-slate-300 motion-reduce:animate-none"
+          >
+            {busyText}
+          </p>
+        ) : (
+          <p className="text-xs text-slate-500">{note}</p>
+        )}
         <div className="flex items-center justify-end gap-3">
           <button
             type="button"
@@ -113,7 +132,7 @@ export function BriefDemoDialog(props: {
             disabled={busy || brief.trim().length < MIN_BRIEF_LENGTH}
             className="rounded-full bg-sky-600 px-5 py-2 text-sm font-medium text-white hover:bg-sky-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300 disabled:opacity-50"
           >
-            Write the call
+            {submitLabel}
           </button>
         </div>
       </form>

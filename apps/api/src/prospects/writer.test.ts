@@ -85,6 +85,24 @@ describe('claudeProspectWriter', () => {
     });
   });
 
+  it("practising a demo's call, shows Claude the call and keeps how hard she was to win", async () => {
+    const { write, sent } = writerWith({ voices: null });
+    const { scenario } = await write('Head of Estates at a care group, 14 homes.', {
+      prospect: {
+        name: 'Tamsin Reid',
+        role: 'Head of Estates',
+        company: 'Carewell',
+        difficulty: 'medium',
+        gender: 'female',
+      },
+      lines: ['Tamsin Reid speaking.', 'We have fourteen homes and one gas contract.'],
+    });
+    expect(sent[0]?.messages[0]?.content).toContain('We have fourteen homes and one gas contract.');
+    // Claude's draft says hard; the demo's medium wins, with medium's thresholds.
+    const medium = testCatalog.scenarios.find((s) => s.difficulty === 'medium')!;
+    expect(scenario).toMatchObject({ difficulty: 'medium', state: medium.state });
+  });
+
   it('gives her the default voice when there is no library, or it cannot be read', async () => {
     const none = writerWith({ voices: null });
     const plain = await none.write('A friendly office manager.');

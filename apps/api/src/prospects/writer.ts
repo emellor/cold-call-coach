@@ -16,6 +16,7 @@ import {
 } from '@ccc/contracts';
 import {
   type Effort,
+  type ModelCall,
   PROSPECT_WRITER_MAX_TOKENS,
   ProspectDraftError,
   SERVER_FALLBACK_BETA,
@@ -49,7 +50,14 @@ export interface WrittenProspect {
   voice: 'chosen' | 'default';
 }
 
-export type ProspectWriter = (description: string) => Promise<WrittenProspect>;
+/**
+ * Writes a prospect from the rep's description; with a model call the rep has
+ * read ("Practise this call"), she is kept consistent with it.
+ */
+export type ProspectWriter = (
+  description: string,
+  modelCall?: ModelCall,
+) => Promise<WrittenProspect>;
 
 /** The slice of `client.beta.messages` the writer uses; a fake satisfies it in tests. */
 export interface CreatingMessages {
@@ -110,7 +118,7 @@ export function claudeProspectWriter(options: {
     }
   };
 
-  return async (description) => {
+  return async (description, modelCall) => {
     const voices = await readVoices();
     const format = structuredFormat(draftSchema(voices));
     const caps = modelCapabilities(model);
@@ -126,7 +134,9 @@ export function claudeProspectWriter(options: {
             examples: catalog.scenarios,
             voices,
           }),
-          messages: [{ role: 'user', content: buildProspectWriterUserPrompt(description) }],
+          messages: [
+            { role: 'user', content: buildProspectWriterUserPrompt(description, modelCall) },
+          ],
           output_config: {
             ...(caps.effort ? { effort: PROSPECT_WRITER_EFFORT } : {}),
             format,
@@ -177,6 +187,7 @@ export function claudeProspectWriter(options: {
       const scenario = scenarioFromDraft(draft, {
         id: prospectId(draft.prospect.name, suffix()),
         templates: catalog.scenarios,
+        difficulty: modelCall?.prospect.difficulty,
       });
       return { scenario, voice: draft.voiceId ? 'chosen' : 'default' };
     } catch (error) {
