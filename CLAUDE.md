@@ -246,6 +246,19 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
   - A brief can set an objective other than a meeting, so its outcome is
     `objective_met`, with what was agreed in `outcome_detail`. Prospects in a brief may
     be men: the prompt tells Claude to read "she" as "he" for a man.
+- **Practise this call** (`POST /api/demos/:id/practice`, a ready demo from a brief only)
+  makes the demo's prospect someone to call on the Call page. It is "Add new"'s writer,
+  given the brief and a `ModelCall`: who the prospect is in the demo and every line they
+  say, which the prompt tells Claude to keep her consistent with. `scenarioFromDraft` takes
+  the demo's difficulty over the draft's, so she is as hard to win as in the demo.
+  - Migration 0009 links her to the demo (`demos.practice_scenario_id`). A second press
+    returns her without writing her again. `DemoDetail.practiceProspect` skips her once
+    she is archived, so the button comes back, and pressing it writes a new one.
+  - She is a woman, whatever the brief says (the "she" rule under "Add new"): a man in
+    the brief becomes a woman in the same job, and the page says so before the rep
+    presses.
+  - The web links to `/?prospect=<id>`. The Call page picks her once, then replaces the
+    address with `/`.
 - **Listen is free and in the browser**: `web/src/demos/readAloud.ts` speaks the call
   through the Web Speech API, a sentence per utterance (Chrome cuts long utterances off,
   and a pause then lands on a line). `pickVoices` gives the prospect a voice of their
@@ -261,6 +274,30 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
   paid for, and each demo was retried three times.
 - Migration 0007 dropped the audio and mood columns. `web/src/demos/DemoPage.tsx`
   shows the transcript and reads it aloud in the browser; there is no audio route.
+
+## Cheat sheets
+
+- **One Claude call writes each sheet, while the rep waits** (`POST /api/cheat-sheets`,
+  201 `{ id }`, about half a minute). `apps/api/src/cheatSheets/writer.ts` asks for
+  `CheatSheetDraft` (`contracts/cheatSheet.ts`) on `REVIEW_MODEL` at medium effort, with
+  a 2-minute cap. It answers 503 without `ANTHROPIC_API_KEY`, and 502 with Claude's own
+  words when writing fails.
+- The prompt and the checks are pure, in `core/cheatSheet/prompt.ts`. The system prompt
+  is the same for every sheet and carries a cache breakpoint: the product, the rubric's
+  top anchors as the bar, and what each field is. It forbids claims about the product
+  beyond `product.json`. The rep's profile goes in the user turn. `cheatSheetFrom` trims
+  every line and caps each list at what fits on a page. It refuses a sheet without an
+  opener, at least two questions and a close.
+- A sheet is stored whole in `cheat_sheets` (migration 0010), with its model and cost,
+  and never rewritten. `GET /api/cheat-sheets` lists them newest first, and
+  `GET`/`DELETE /api/cheat-sheets/:id` handle one.
+- **Web**: `/cheat-sheets` (the list and **Create cheat sheet**) and `/cheat-sheets/:id`.
+  The call in order runs down the left and the replies down the right. Printing uses
+  `print:` variants, with a `@media print` block in `index.css` that forces the light
+  scheme; the header is `print:hidden`. The profile dialog is shared with the demos'
+  brief (`components/BriefDialog.tsx`).
+- A demo from a brief has **Cheat sheet for this call**, which sends the demo's brief as
+  the profile.
 
 ## The live coach and the controls (M5)
 
@@ -417,13 +454,20 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
 
 ## Tests
 
-Two Vitest projects in `vitest.config.ts`: `node` for every `*.test.ts`, `jsdom` for
-every `*.test.tsx`.
+Three Vitest projects in `vitest.config.ts`:
 
-Database-backed tests (`*.route.test.ts`, `*.db.test.ts`) run against a real Postgres,
-never a mocked Drizzle. When no database answers they skip with a loud warning; with
-`REQUIRE_DB=1` (set in CI) that is a failure instead. The node project's global setup
-migrates the test database first, so `docker compose up -d && pnpm test` just works.
+- `node` for every other `*.test.ts`;
+- `db` for the database-backed tests (`*.route.test.ts`, `*.db.test.ts`);
+- `jsdom` for every `*.test.tsx`.
+
+Database-backed tests run against a real Postgres, never a mocked Drizzle. They share one
+database, so the `db` project runs one file at a time (`fileParallelism: false`). Run side
+by side, the demos tests once queued a batch for a prospect the scenarios tests had just
+added.
+
+When no database answers they skip with a loud warning; with `REQUIRE_DB=1` (set in CI)
+that is a failure instead. The `db` project's global setup migrates the test database
+first, so `docker compose up -d && pnpm test` just works.
 
 ## Import boundaries (eslint.config.js)
 

@@ -10,9 +10,10 @@ import {
   ScenarioSpec,
 } from '@ccc/contracts';
 import { demoPlan } from '@ccc/core';
-import { asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.ts';
 import { demoTurns, demos, scenarios } from '../db/schema.ts';
+import { latestScenario } from '../scenarios.ts';
 import type { WrittenDemo } from './writer.ts';
 
 /** A demo a restart interrupted goes back in the queue this many times at most. */
@@ -252,6 +253,10 @@ export async function demoDetail(db: Db, id: string): Promise<DemoDetail | null>
     .from(demoTurns)
     .where(eq(demoTurns.demoId, id))
     .orderBy(asc(demoTurns.idx));
+  // Removing her from the picker unlinks her: the demo offers to add her again.
+  const practice = row.practiceScenarioId
+    ? await latestScenario(db, row.practiceScenarioId)
+    : undefined;
   return {
     ...summaryOf(row, prospect(row)),
     summary: row.summary,
@@ -259,5 +264,51 @@ export async function demoDetail(db: Db, id: string): Promise<DemoDetail | null>
     outcomeDetail: row.outcomeDetail,
     turns,
     costUsd: row.costUsd,
+    practiceProspect: practice ? { id: practice.id, name: practice.prospect.name } : null,
   };
+}
+
+/** What "Practise this call" writes the prospect from: a written demo from a brief. */
+export interface PracticeSource {
+  status: DemoSummary['status'];
+  /** Null for a demo to one of the stored prospects: she is in the picker already. */
+  brief: string | null;
+  prospect: DemoProspect | null;
+  /** The prospect's lines in the demo, in order. */
+  lines: string[];
+  practiceScenarioId: string | null;
+}
+
+export async function practiceSource(db: Db, id: string): Promise<PracticeSource | null> {
+  const [row] = await db
+    .select({
+      status: demos.status,
+      brief: demos.brief,
+      prospect: demos.prospect,
+      practiceScenarioId: demos.practiceScenarioId,
+    })
+    .from(demos)
+    .where(eq(demos.id, id));
+  if (!row) return null;
+  const lines = await db
+    .select({ text: demoTurns.text })
+    .from(demoTurns)
+    .where(and(eq(demoTurns.demoId, id), eq(demoTurns.speaker, 'prospect')))
+    .orderBy(asc(demoTurns.idx));
+  const prospect = DemoProspect.safeParse(row.prospect);
+  return {
+    status: row.status,
+    brief: row.brief,
+    prospect: prospect.success ? prospect.data : null,
+    lines: lines.map((l) => l.text),
+    practiceScenarioId: row.practiceScenarioId,
+  };
+}
+
+/** Remembers the prospect added to practise a demo's call. */
+export async function linkPracticeScenario(db: Db, id: string, scenarioId: string): Promise<void> {
+  await db
+    .update(demos)
+    .set({ practiceScenarioId: scenarioId, updatedAt: sql`now()` })
+    .where(eq(demos.id, id));
 }

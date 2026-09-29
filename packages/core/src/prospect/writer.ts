@@ -5,6 +5,8 @@
 // difficulty, which scenarios.test.ts proves a good rep can win and a pushy
 // one loses.
 import {
+  type DemoGender,
+  type Difficulty,
   type ProductSpec,
   type ProspectDraft,
   ScenarioSpec,
@@ -60,11 +62,42 @@ The app's existing prospects, for the level of detail:
 ${examples.map(example).join('\n')}${voiceList}`;
 }
 
-export function buildProspectWriterUserPrompt(description: string): string {
-  return `The rep's description of her:
+/**
+ * A demo call the rep has read, to practise the same call: who the prospect
+ * was in it, and every line they said, so she gives the same facts.
+ */
+export interface ModelCall {
+  prospect: {
+    name: string;
+    role: string;
+    company: string;
+    difficulty: Difficulty;
+    gender: DemoGender;
+  };
+  /** The prospect's lines in the demo, in order. */
+  lines: readonly string[];
+}
+
+export function buildProspectWriterUserPrompt(description: string, modelCall?: ModelCall): string {
+  const ask = `The rep's description of her:
 """
 ${description.trim()}
-"""
+"""`;
+  if (!modelCall)
+    return `${ask}
+
+Write this prospect.`;
+  const { prospect, lines } = modelCall;
+  const who =
+    prospect.gender === 'male'
+      ? `In the model call the prospect is a man, ${prospect.name}, ${prospect.role} at ${prospect.company}. The app's prospects are women, so she has his job, his company and his situation, and a woman's name to match.`
+      : `Keep her name: ${prospect.name}, ${prospect.role} at ${prospect.company}.`;
+  return `${ask}
+
+The rep has read a model call to this person and wants to practise the same call. Keep her consistent with it: her job, her company, her situation, how hard she is to win (${prospect.difficulty}), and every fact she gives away in it. Her private facts are the ones the model call uncovers. ${who}
+
+What the prospect says in the model call:
+${lines.map((line) => `- "${line}"`).join('\n')}
 
 Write this prospect.`;
 }
@@ -94,17 +127,23 @@ const list = (items: readonly string[], max: number) =>
  */
 export function scenarioFromDraft(
   draft: ProspectDraft & { voiceId?: string },
-  options: { id: string; templates: readonly ScenarioSpec[] },
+  options: {
+    id: string;
+    templates: readonly ScenarioSpec[];
+    /** Wins over the draft's: practising a demo's call, she is as hard to win as in it. */
+    difficulty?: Difficulty;
+  },
 ): ScenarioSpec {
+  const difficulty = options.difficulty ?? draft.difficulty;
   const template =
-    options.templates.find((s) => s.difficulty === draft.difficulty) ?? options.templates[0];
+    options.templates.find((s) => s.difficulty === difficulty) ?? options.templates[0];
   if (!template) throw new ProspectDraftError('There is no shipped scenario to base her on.');
   const { prospect } = draft;
   const parsed = ScenarioSpec.safeParse({
     id: options.id,
     version: 1,
     title: clean(draft.title),
-    difficulty: draft.difficulty,
+    difficulty,
     locale: draft.locale,
     prospect: {
       name: clean(prospect.name),

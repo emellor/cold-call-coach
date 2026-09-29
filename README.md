@@ -1,10 +1,11 @@
 # Cold Call Coach
 
 A personal web app for practising B2B cold calls. Pick a scenario, press **Dial** and
-hear it ring. A prospect answers: a talking 3D character with a natural voice who
-objects, gets impatient, hangs up if you ramble and agrees to a meeting only when you
-earn it. A coach shows live cues during the call, and afterwards you get a scorecard
-with "say this instead" corrections.
+hear it ring. A prospect answers in a natural voice: she objects, gets impatient, hangs
+up if you ramble and agrees to a meeting only when you earn it. A coach shows live cues
+during the call, and afterwards you get a scorecard with "say this instead" corrections.
+Demo calls show an expert making the call, and a cheat sheet is the page of notes to
+have in front of you on a real one.
 
 The design is in [docs/PLAN.md](docs/PLAN.md); it is built milestone by milestone from
 [docs/PROMPTS.md](docs/PROMPTS.md).
@@ -187,6 +188,19 @@ meeting, a site visit say, and the demo is then marked **Objective met**. It's o
 written ahead of any batch: about a minute and 10 cents. The page waits for it and shows
 the call as soon as it's ready.
 
+Once it's written, a demo from a brief offers two ways to **prepare for this call**:
+
+- **Practise this call** adds the person from the brief to the picker on the Call page,
+  so you can make the same call yourself, live and coached. Claude writes her from your
+  brief and the demo's call, told to keep her job, company and situation and everything
+  she says in the demo, so what you read holds when you ring her. She is as hard to win
+  as in the demo: the code keeps its difficulty, whatever Claude's draft says. It's one
+  request, like **Add new**: about half a minute and 5–10 cents. The demo then links to
+  her, and pressing the link picks her on the Call page. Practice prospects are all
+  women, so a man in the brief becomes a woman in the same job, and the page says so
+  before you press.
+- **Cheat sheet for this call** writes a [cheat sheet](#cheat-sheets) from the same brief.
+
 **Generate 20 demo calls** queues a batch across the prospects in the picker, yours
 included. The API has Claude write each one in a single request: the rep's approach,
 her profile and what she's hiding go in, and the whole call comes back with the notes.
@@ -205,6 +219,28 @@ Manage Voices) gives the browser a better one to choose, and it prefers those.
 A demo is written once and kept. One that fails isn't tried again by itself, since the
 attempt may already have been paid for: **Retry** writes the failed ones again. Reading a
 demo before you call that prospect gives away what she's hiding.
+
+## Cheat sheets
+
+**Cheat sheets** are the notes to have in front of you on a real call. **Create cheat
+sheet** asks for a profile of the person you're about to call: who they are, the
+business, what you know and what you want from the call. Claude (`REVIEW_MODEL`, at
+medium effort) writes the sheet while you wait, in about half a minute:
+
+- **Open**: the first words, as you'd say them.
+- **Why I'm calling**: the reason, in a sentence or two.
+- **Ask**: the questions that get them talking, in order.
+- **Close**: the words that ask for the next step.
+- **If they push back** and **If they ask**: what they're likely to say, each with a
+  short line back.
+- **When they name a problem**: the line that ties it to what you sell.
+- **Voicemail**: what to leave if they don't pick up.
+
+The lines are short, to be read at a glance mid-call. The call runs down the left in
+order and the replies down the right; on a phone they stack. **Print** puts the sheet on
+paper, black on white. A sheet is kept until you delete it, and it shows what it cost
+under **Written from your profile**. It's one request: about 5 cents, an estimate until
+the first real ones are priced.
 
 ## Cost per call
 
@@ -356,12 +392,12 @@ CI runs the same against a Postgres 16 service on every pull request and push to
 
 ## Layout
 
-| Path                 | What                                                           |
-| -------------------- | -------------------------------------------------------------- |
-| `apps/web`           | Vite + React SPA: dialler, live coach, review and history      |
-| `apps/api`           | Fastify + Drizzle + Postgres; serves the SPA in production     |
-| `apps/agent`         | LiveKit Agents worker (`agentName: "prospect"`)                |
-| `packages/contracts` | zod schemas and types for every wire payload                   |
-| `packages/core`      | Pure logic: metrics, state engine, prompt builders, validators |
-| `scenarios`          | Product, scenario and rubric JSON                              |
-| `docs`               | The build plan and milestone prompts                           |
+| Path                 | What                                                                           |
+| -------------------- | ------------------------------------------------------------------------------ |
+| `apps/web`           | Vite + React SPA: dialler, live coach, review, history, demos and cheat sheets |
+| `apps/api`           | Fastify + Drizzle + Postgres; serves the SPA in production                     |
+| `apps/agent`         | LiveKit Agents worker (`agentName: "prospect"`)                                |
+| `packages/contracts` | zod schemas and types for every wire payload                                   |
+| `packages/core`      | Pure logic: metrics, state engine, prompt builders, validators                 |
+| `scenarios`          | Product, scenario and rubric JSON                                              |
+| `docs`               | The build plan and milestone prompts                                           |

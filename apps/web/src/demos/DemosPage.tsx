@@ -6,8 +6,8 @@ import { type DemoSummary, MAX_DEMO_BATCH } from '@ccc/contracts';
 import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { AppHeader } from '../components/AppHeader.tsx';
-import { generateDemos, retryDemos } from '../lib/api.ts';
-import { BriefDemoDialog } from './BriefDemoDialog.tsx';
+import { BriefDialog } from '../components/BriefDialog.tsx';
+import { createDemo, generateDemos, retryDemos } from '../lib/api.ts';
 import { DIFFICULTY_STYLE, GENERATE_CONFIRM, OUTCOME_CHIP, STATUS_CHIP } from './labels.ts';
 import { useDemos, writing } from './useDemos.ts';
 
@@ -181,9 +181,16 @@ export function DemosPage() {
         </section>
 
         {briefOpen && (
-          <BriefDemoDialog
+          <BriefDialog
+            title="Write a demo call from your brief"
+            intro="Describe the call you're about to make, and Claude writes the 10/10 version of it: every line, with the technique behind each thing the rep says."
+            submitLabel="Write the call"
+            note="One request to Claude: about 10 cents, and about a minute to write."
+            onSubmit={async (brief) => {
+              const { id } = await createDemo({ brief });
+              navigate(`/demos/${id}`);
+            }}
             onClose={() => setBriefOpen(false)}
-            onCreated={({ id }) => navigate(`/demos/${id}`)}
           />
         )}
 

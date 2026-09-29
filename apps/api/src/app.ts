@@ -5,6 +5,7 @@ import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastif
 import type pg from 'pg';
 import { ZodError } from 'zod';
 import { registerAuth } from './auth.ts';
+import { type CheatSheetWriter, claudeCheatSheetWriter } from './cheatSheets/writer.ts';
 import { type Config, liveKitConfig } from './config.ts';
 import type { Db } from './db/client.ts';
 import { DemoQueue } from './demos/queue.ts';
@@ -23,6 +24,7 @@ import { ReviewQueue } from './review/queue.ts';
 import { type Reviewer, claudeReviewer } from './review/reviewer.ts';
 import { registerCallLogRoutes } from './routes/callLog.ts';
 import { registerCallRoutes } from './routes/calls.ts';
+import { registerCheatSheetRoutes } from './routes/cheatSheets.ts';
 import { registerDemoRoutes } from './routes/demos.ts';
 import { registerHealthRoutes } from './routes/health.ts';
 import { registerScenarioRoutes } from './routes/scenarios.ts';
@@ -51,6 +53,11 @@ export interface AppDeps {
    * pass a stub.
    */
   demoWriter?: DemoWriter | null;
+  /**
+   * Writes cheat sheets. Omitted: Claude on REVIEW_MODEL, or none without
+   * ANTHROPIC_API_KEY (writing one is then refused, saying why). Tests pass a stub.
+   */
+  cheatSheetWriter?: CheatSheetWriter | null;
   /** Omitted: read from config/prices.json. */
   prices?: PriceTable;
   /**
@@ -63,7 +70,7 @@ export interface AppDeps {
 /** What the routes get: the deps with the price table resolved. */
 export type AppContext = Omit<
   AppDeps,
-  'prices' | 'livekitCheck' | 'prospectWriter' | 'demoWriter'
+  'prices' | 'livekitCheck' | 'prospectWriter' | 'demoWriter' | 'cheatSheetWriter'
 > & {
   prices: PriceTable;
 };
@@ -115,6 +122,23 @@ function defaultDemoWriter(
   const { config } = deps;
   if (!config.ANTHROPIC_API_KEY) return null;
   return claudeDemoWriter({
+    messages: claudeFor(config.ANTHROPIC_API_KEY, config).beta.messages,
+    model: config.REVIEW_MODEL,
+    product: deps.catalog.product,
+    rubrics: deps.catalog.rubrics,
+    prices,
+    logger,
+  });
+}
+
+function defaultCheatSheetWriter(
+  deps: AppDeps,
+  prices: PriceTable,
+  logger: FastifyInstance['log'],
+): CheatSheetWriter | null {
+  const { config } = deps;
+  if (!config.ANTHROPIC_API_KEY) return null;
+  return claudeCheatSheetWriter({
     messages: claudeFor(config.ANTHROPIC_API_KEY, config).beta.messages,
     model: config.REVIEW_MODEL,
     product: deps.catalog.product,
@@ -184,16 +208,22 @@ export async function buildApp(
     livekit:
       deps.livekitCheck === undefined ? defaultLiveKitCheck(deps.config, app) : deps.livekitCheck,
   });
-  registerScenarioRoutes(
-    app,
-    context,
+  // "Add new", and "Practise this call" on a demo from a brief.
+  const prospectWriter =
     deps.prospectWriter === undefined
       ? defaultProspectWriter(deps, context.prices, app.log)
-      : deps.prospectWriter,
-  );
+      : deps.prospectWriter;
+  registerScenarioRoutes(app, context, prospectWriter);
   registerCallRoutes(app, context, queue);
   registerCallLogRoutes(app, context, queue);
-  registerDemoRoutes(app, context, demoQueue);
+  registerDemoRoutes(app, context, demoQueue, prospectWriter);
+  registerCheatSheetRoutes(
+    app,
+    context,
+    deps.cheatSheetWriter === undefined
+      ? defaultCheatSheetWriter(deps, context.prices, app.log)
+      : deps.cheatSheetWriter,
+  );
   await registerWeb(app, options.webDistDir ?? webDistDir);
 
   return app;

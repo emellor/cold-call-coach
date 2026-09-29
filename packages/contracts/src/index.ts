@@ -2,6 +2,7 @@
 // schema here, and both ends validate against it.
 export * from './call.ts';
 export * from './callLog.ts';
+export * from './cheatSheet.ts';
 export * from './cost.ts';
 export * from './demo.ts';
 export * from './http.ts';

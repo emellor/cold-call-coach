@@ -3,18 +3,20 @@ import {
   CreateDemoResponse,
   DemoDetail,
   DemoListResponse,
+  PracticeProspectResponse,
   ScenarioListResponse,
 } from '@ccc/contracts';
-import { DEMO_ANGLES, demoPlan } from '@ccc/core';
-import { eq, inArray, notInArray, sql } from 'drizzle-orm';
+import { DEMO_ANGLES, type ModelCall, demoPlan } from '@ccc/core';
+import { eq, inArray, like, notInArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.ts';
 import { loadConfig } from '../config.ts';
 import { createDb } from '../db/client.ts';
-import { demoTurns, demos } from '../db/schema.ts';
+import { demoTurns, demos, scenarios } from '../db/schema.ts';
 import { MAX_ATTEMPTS, claimDemo, failDemo, queueBriefDemo, queueDemos } from '../demos/store.ts';
 import { NO_DEMO_WRITER_MESSAGE } from '../demos/writer.ts';
+import { NO_WRITER_MESSAGE, type ProspectWriter } from '../prospects/writer.ts';
 import { testCatalog } from '../test/catalog.ts';
 import { databaseAvailable, testDatabaseUrl } from '../test/db.ts';
 import { briefProspect, stubDemoWriter, writtenDemo } from '../test/demos.ts';
@@ -33,6 +35,21 @@ describe.skipIf(!hasDb)('demo call routes (real Postgres)', () => {
   let app: FastifyInstance;
   let before: string[] = [];
 
+  // "Practise this call": what the prospect writer was asked, and a prospect from a shipped one.
+  const practised: Array<{ description: string; modelCall?: ModelCall }> = [];
+  const prospectWriter: ProspectWriter = (description, modelCall) => {
+    practised.push({ description, modelCall });
+    const base = testCatalog.scenarios.find((s) => s.id === 'hard-facilities-manager')!;
+    return Promise.resolve({
+      scenario: {
+        ...base,
+        id: `demo-route-practice-${practised.length}`,
+        prospect: { ...base.prospect, name: 'Tamsin Reid' },
+      },
+      voice: 'default',
+    });
+  };
+
   const build = (demoWriter: typeof stub.writer | null) =>
     buildApp(
       {
@@ -40,7 +57,7 @@ describe.skipIf(!hasDb)('demo call routes (real Postgres)', () => {
         pool,
         db,
         catalog: testCatalog,
-        prospectWriter: null,
+        prospectWriter: demoWriter ? prospectWriter : null,
         demoWriter,
       },
       { webDistDir: '/nonexistent' },
@@ -67,10 +84,16 @@ describe.skipIf(!hasDb)('demo call routes (real Postgres)', () => {
   afterAll(async () => {
     await app.close();
     await db.delete(demos).where(before.length ? notInArray(demos.id, before) : sql`true`);
+    await db.delete(scenarios).where(like(scenarios.id, 'demo-route-practice-%'));
     await pool.end();
   });
 
   it('writes a batch across the prospects, one request each, and refuses a second while it runs', async () => {
+    // The picker as the batch is planned from it: the scenarios route tests add
+    // prospects to this database while these run.
+    const picker = ScenarioListResponse.parse(
+      (await app.inject({ method: 'GET', url: '/api/scenarios' })).json(),
+    ).scenarios.map((s) => s.id);
     stub.holdAll();
     const res = await app.inject({
       method: 'POST',
@@ -102,9 +125,6 @@ describe.skipIf(!hasDb)('demo call routes (real Postgres)', () => {
     await app.demoQueue.idle();
 
     // Each demo was one call to the writer, with its own approach, the picker's prospects in turn.
-    const picker = ScenarioListResponse.parse(
-      (await app.inject({ method: 'GET', url: '/api/scenarios' })).json(),
-    ).scenarios.map((s) => s.id);
     expect(stub.asked).toHaveLength(4);
     expect(stub.asked.map((a) => a.angle).sort()).toEqual(DEMO_ANGLES.slice(0, 4).toSorted());
     expect(stub.asked.map((a) => a.scenarioId).sort()).toEqual(
@@ -223,6 +243,49 @@ describe.skipIf(!hasDb)('demo call routes (real Postgres)', () => {
     expect((await list()).find((d) => d.id === id)).toMatchObject({ prospect: briefProspect });
   });
 
+  it('adds the prospect from a brief demo to the picker once, consistent with the demo', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/demos', payload: { brief: BRIEF } });
+    const { id } = CreateDemoResponse.parse(res.json());
+    await app.demoQueue.idle();
+    expect((await detail(id)).practiceProspect).toBeNull();
+
+    const first = await app.inject({ method: 'POST', url: `/api/demos/${id}/practice` });
+    expect(first.statusCode).toBe(201);
+    const { scenario } = PracticeProspectResponse.parse(first.json());
+    expect(scenario).toMatchObject({ custom: true, prospect: { name: 'Tamsin Reid' } });
+    // Written from the brief, as the demo's prospect, saying what they said in it.
+    expect(practised).toEqual([
+      {
+        description: BRIEF,
+        modelCall: {
+          prospect: briefProspect,
+          lines: writtenDemo.lines.filter((l) => l.speaker === 'prospect').map((l) => l.text),
+        },
+      },
+    ]);
+    const picker = ScenarioListResponse.parse(
+      (await app.inject({ method: 'GET', url: '/api/scenarios' })).json(),
+    ).scenarios;
+    expect(picker.map((s) => s.id)).toContain(scenario.id);
+    expect((await detail(id)).practiceProspect).toEqual({ id: scenario.id, name: 'Tamsin Reid' });
+
+    // A second press finds her rather than paying to write her again.
+    const again = await app.inject({ method: 'POST', url: `/api/demos/${id}/practice` });
+    expect(again.statusCode).toBe(200);
+    expect(PracticeProspectResponse.parse(again.json()).scenario.id).toBe(scenario.id);
+    expect(practised).toHaveLength(1);
+
+    // A batch demo's prospect is in the picker already.
+    const batch = (await list()).find((d) => d.brief === null && d.status === 'ready');
+    const refused = await app.inject({ method: 'POST', url: `/api/demos/${batch!.id}/practice` });
+    expect(refused.statusCode).toBe(409);
+    const missing = await app.inject({
+      method: 'POST',
+      url: `/api/demos/${randomUUID()}/practice`,
+    });
+    expect(missing.statusCode).toBe(404);
+  });
+
   it('writes a demo from a brief ahead of a batch already waiting', async () => {
     await queueDemos(db, ['hard-facilities-manager'], 2);
     const briefId = await queueBriefDemo(db, BRIEF);
@@ -249,6 +312,12 @@ describe.skipIf(!hasDb)('demo call routes (real Postgres)', () => {
         expect(res.statusCode).toBe(503);
         expect(res.json()).toEqual({ error: NO_DEMO_WRITER_MESSAGE });
       }
+      const practice = await off.inject({
+        method: 'POST',
+        url: `/api/demos/${randomUUID()}/practice`,
+      });
+      expect(practice.statusCode).toBe(503);
+      expect(practice.json()).toEqual({ error: NO_WRITER_MESSAGE });
     } finally {
       await off.close();
     }

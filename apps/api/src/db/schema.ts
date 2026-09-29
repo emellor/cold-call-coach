@@ -4,6 +4,7 @@ import type {
   CallMode,
   CallOutcome,
   CallPhase,
+  CheatSheetDraft,
   DebugLatencyPayload,
   DemoOutcome,
   DemoProspect,
@@ -149,6 +150,8 @@ export const demos = pgTable(
     brief: text('brief'),
     /** Who a demo from a brief called, as Claude wrote them. */
     prospect: jsonb('prospect').$type<DemoProspect>(),
+    /** The prospect added to the picker to practise this call (migration 0009). */
+    practiceScenarioId: text('practice_scenario_id'),
     status: text('status').$type<DemoStatus>().notNull().default('queued'),
     attempts: integer('attempts').notNull().default(0),
     claimedAt: timestamptz('claimed_at'),
@@ -178,4 +181,19 @@ export const demoTurns = pgTable(
     note: text('note'),
   },
   (t) => [primaryKey({ columns: [t.demoId, t.idx] })],
+);
+
+/** A cheat sheet for a real call (migration 0010). */
+export const cheatSheets = pgTable(
+  'cheat_sheets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    brief: text('brief').notNull(),
+    title: text('title').notNull(),
+    sheet: jsonb('sheet').$type<CheatSheetDraft>().notNull(),
+    model: text('model'),
+    costUsd: usd('cost_usd'),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('cheat_sheets_created_idx').on(t.createdAt)],
 );

@@ -5,6 +5,7 @@ import {
   DemoListResponse,
   GenerateDemosRequest,
   GenerateDemosResponse,
+  PracticeProspectResponse,
 } from '@ccc/contracts';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -13,13 +14,26 @@ import type { DemoQueue } from '../demos/queue.ts';
 import {
   demoDetail,
   demosInProgress,
+  linkPracticeScenario,
   listDemos,
+  practiceSource,
   queueBriefDemo,
   queueDemos,
   retryFailedDemos,
 } from '../demos/store.ts';
 import { NO_DEMO_WRITER_MESSAGE } from '../demos/writer.ts';
-import { latestScenarios, pickerOrder } from '../scenarios.ts';
+import {
+  NO_WRITER_MESSAGE,
+  type ProspectWriter,
+  ProspectWriterError,
+} from '../prospects/writer.ts';
+import {
+  insertCustomScenario,
+  latestScenario,
+  latestScenarios,
+  pickerOrder,
+  toSummary,
+} from '../scenarios.ts';
 
 const DemoParams = z.object({ id: z.uuid() });
 
@@ -27,6 +41,8 @@ export function registerDemoRoutes(
   app: FastifyInstance,
   { db }: AppContext,
   queue: DemoQueue,
+  /** "Add new"'s writer, for "Practise this call"; null without ANTHROPIC_API_KEY. */
+  prospectWriter: ProspectWriter | null,
 ): void {
   app.get('/api/demos', async () => DemoListResponse.parse({ demos: await listDemos(db) }));
 
@@ -72,6 +88,49 @@ export function registerDemoRoutes(
     const queued = await retryFailedDemos(db);
     queue.kick();
     return reply.code(202).send(GenerateDemosResponse.parse({ queued }));
+  });
+
+  // "Practise this call": the prospect from a demo's brief joins the picker, so
+  // the rep can practise the call they have just read. One "Add new" request,
+  // kept consistent with the demo; a second press returns her without writing
+  // her again.
+  app.post('/api/demos/:id/practice', async (request, reply) => {
+    const { id } = DemoParams.parse(request.params);
+    if (!prospectWriter) return reply.code(503).send({ error: NO_WRITER_MESSAGE });
+    const demo = await practiceSource(db, id);
+    if (!demo) return reply.code(404).send({ error: 'No such demo call.' });
+    if (demo.brief === null || demo.prospect === null) {
+      return reply.code(409).send({
+        error:
+          "Only a demo written from your brief can be practised: the others' prospects are in the picker already.",
+      });
+    }
+    if (demo.status !== 'ready') {
+      return reply.code(409).send({ error: 'This demo call has not been written yet.' });
+    }
+    const existing = demo.practiceScenarioId
+      ? await latestScenario(db, demo.practiceScenarioId)
+      : undefined;
+    if (existing) {
+      return reply.send(PracticeProspectResponse.parse({ scenario: toSummary(existing, true) }));
+    }
+    let written;
+    try {
+      written = await prospectWriter(demo.brief, { prospect: demo.prospect, lines: demo.lines });
+    } catch (error) {
+      if (!(error instanceof ProspectWriterError)) throw error;
+      request.log.warn({ err: error, demoId: id }, 'writing the practice prospect failed');
+      return reply.code(502).send({ error: error.message });
+    }
+    await insertCustomScenario(db, written.scenario, demo.brief);
+    await linkPracticeScenario(db, id, written.scenario.id);
+    request.log.info(
+      { demoId: id, scenarioId: written.scenario.id, voice: written.voice },
+      'practice prospect added from a demo',
+    );
+    return reply
+      .code(201)
+      .send(PracticeProspectResponse.parse({ scenario: toSummary(written.scenario, true) }));
   });
 
   app.get('/api/demos/:id', async (request, reply) => {

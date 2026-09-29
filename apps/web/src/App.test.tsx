@@ -55,7 +55,10 @@ const healthy = () => json(200, { ok: true, db: { ok: true, latencyMs: 3 } });
 const stage = () => within(screen.getByRole('region', { name: 'Prospect' }));
 
 describe('App', () => {
-  beforeEach(() => window.localStorage.clear());
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.history.replaceState(null, '', '/');
+  });
   afterEach(() => vi.restoreAllMocks());
 
   it('opens on the call screen with the first scenario picked, ready to dial', async () => {
@@ -78,6 +81,18 @@ describe('App', () => {
 
     render(<App />);
     expect(await screen.findByRole('radio', { name: /Claire Hughes/ })).toBeChecked();
+  });
+
+  it('picks the prospect a demo sent the rep to practise on, then tidies the address', async () => {
+    mockApi({
+      '/api/health': healthy,
+      '/api/scenarios': () => json(200, { scenarios: [...SCENARIOS.scenarios, RACHEL] }),
+    });
+    window.history.replaceState(null, '', `/?prospect=${RACHEL.id}`);
+    render(<App />);
+    expect(await screen.findByRole('radio', { name: /Rachel Byrne/ })).toBeChecked();
+    expect(stage().getByText('Rachel Byrne')).toBeInTheDocument();
+    expect(window.location.pathname + window.location.search).toBe('/');
   });
 
   it('dials coached calls unless the rep picks exam, and remembers the choice', async () => {

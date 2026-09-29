@@ -1,4 +1,6 @@
 import { Route, Switch } from 'wouter';
+import { CheatSheetPage } from './cheatSheets/CheatSheetPage.tsx';
+import { CheatSheetsPage } from './cheatSheets/CheatSheetsPage.tsx';
 import { DemoPage } from './demos/DemoPage.tsx';
 import { DemosPage } from './demos/DemosPage.tsx';
 import { CallPage } from './pages/CallPage.tsx';
@@ -13,6 +15,10 @@ export function App() {
       <Route path="/calls/:id">{(params) => <ReviewPage key={params.id} id={params.id} />}</Route>
       <Route path="/demos" component={DemosPage} />
       <Route path="/demos/:id">{(params) => <DemoPage key={params.id} id={params.id} />}</Route>
+      <Route path="/cheat-sheets" component={CheatSheetsPage} />
+      <Route path="/cheat-sheets/:id">
+        {(params) => <CheatSheetPage key={params.id} id={params.id} />}
+      </Route>
       <Route>
         <main className="mx-auto max-w-2xl p-8">
           <h1 className="text-2xl font-semibold">Page not found</h1>
