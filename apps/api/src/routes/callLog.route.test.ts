@@ -12,10 +12,18 @@ import { buildApp } from '../app.ts';
 import { loadConfig } from '../config.ts';
 import { createDb } from '../db/client.ts';
 import { calls, events, reviews, turns } from '../db/schema.ts';
+import type { RepNoter } from '../review/noter.ts';
 import { NO_REVIEWER_MESSAGE } from '../review/queue.ts';
 import type { Reviewer } from '../review/reviewer.ts';
 import { testCatalog } from '../test/catalog.ts';
-import { createCall, deleteCall, sampleLog, stubReviewer } from '../test/callLog.ts';
+import {
+  createCall,
+  deleteCall,
+  reverseLog,
+  sampleLog,
+  stubRepNoter,
+  stubReviewer,
+} from '../test/callLog.ts';
 import { databaseAvailable, testDatabaseUrl } from '../test/db.ts';
 
 const hasDb = await databaseAvailable();
@@ -27,7 +35,7 @@ describe.skipIf(!hasDb)('the call log and its review (real Postgres)', () => {
   const created: string[] = [];
   const apps: FastifyInstance[] = [];
 
-  async function appWith(reviewer: Reviewer | null) {
+  async function appWith(reviewer: Reviewer | null, repNoter: RepNoter | null = null) {
     const app = await buildApp(
       {
         config: loadConfig({ DATABASE_URL: testDatabaseUrl, INTERNAL_API_SECRET: SECRET }),
@@ -35,14 +43,15 @@ describe.skipIf(!hasDb)('the call log and its review (real Postgres)', () => {
         db,
         catalog: testCatalog,
         reviewer,
+        repNoter,
       },
       { webDistDir: '/nonexistent' },
     );
     apps.push(app);
     return app;
   }
-  async function newCall() {
-    const id = await createCall(db);
+  async function newCall(mode: 'coached' | 'reverse' = 'coached') {
+    const id = await createCall(db, 'medium-finance-director', mode);
     created.push(id);
     return id;
   }
@@ -290,6 +299,77 @@ describe.skipIf(!hasDb)('the call log and its review (real Postgres)', () => {
     await app.reviewQueue.idle();
     expect((await detail(app, id)).review).toMatchObject({ status: 'skipped', result: null });
     expect(asked).toHaveLength(0);
+  });
+
+  it("writes notes on Sam's lines for a reverse call, in place of a review, and prices them", async () => {
+    const { reviewer, calls: reviewed } = stubReviewer();
+    const { noter, calls: noted } = stubRepNoter();
+    const app = await appWith(reviewer, noter);
+    const id = await newCall('reverse');
+    await post(app, id, reverseLog());
+    await app.reviewQueue.idle();
+
+    expect(reviewed).toHaveLength(0);
+    expect(noted).toHaveLength(1);
+    expect(noted[0]).toMatchObject({
+      outcome: 'meeting_booked',
+      outcomeReason: 'Tuesday at 10am',
+      scenario: { id: 'medium-finance-director' },
+    });
+    expect(noted[0]?.turns.map((t) => t.speaker)).toEqual([
+      'prospect',
+      'rep',
+      'prospect',
+      'rep',
+      'prospect',
+    ]);
+
+    const call = await detail(app, id);
+    expect(call.call).toMatchObject({
+      mode: 'reverse',
+      outcome: 'meeting_booked',
+      overallScore: null,
+    });
+    expect(call.review).toMatchObject({
+      status: 'ready',
+      result: null,
+      model: 'claude-opus-5-5',
+      costUsd: 0.031,
+      notes: {
+        notes: [
+          { turn: 2, technique: 'Permission opener' },
+          { turn: 4, technique: 'Permission opener' },
+        ],
+        summary: 'Sam earned the meeting.',
+        lessons: ['Ask first.'],
+      },
+    });
+    expect(call.cost?.lines.map((l) => [l.key, l.usd])).toEqual([
+      ['rep', 0.0123],
+      ['review', 0.031],
+      ['tts', 0.045],
+    ]);
+  });
+
+  it('skips the notes on a reverse call where the rep said nothing as her', async () => {
+    const { noter, calls: noted } = stubRepNoter();
+    const app = await appWith(null, noter);
+    const id = await newCall('reverse');
+    await post(
+      app,
+      id,
+      reverseLog({
+        outcome: 'hung_up_by_prospect',
+        turns: reverseLog().turns.filter((t) => t.speaker === 'rep'),
+      }),
+    );
+    await app.reviewQueue.idle();
+    expect((await detail(app, id)).review).toMatchObject({
+      status: 'skipped',
+      error: 'No notes for this call: you did not say anything as her.',
+      notes: null,
+    });
+    expect(noted).toHaveLength(0);
   });
 
   it('fails the review with a reason when the API has no Claude key, and reruns it on request', async () => {

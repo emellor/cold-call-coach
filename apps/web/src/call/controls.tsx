@@ -1,5 +1,6 @@
 // The call page's buttons: the mode choice before dialling, and during a
-// call Pause/Resume (Space), Get help (H), Rewind (R) and Hang up (Esc).
+// call Pause/Resume (Space), Get help (H), Rewind (R) and Hang up (Esc). A
+// reverse call, where Sam calls the rep, has hang-up alone.
 import type { CallMode } from '@ccc/contracts';
 import type { ReactNode } from 'react';
 import {
@@ -14,6 +15,11 @@ import {
 const MODES: Array<{ mode: CallMode; label: string; detail: string }> = [
   { mode: 'coached', label: 'Coached', detail: 'Live panel, tips, pause, Get help and rewind' },
   { mode: 'exam', label: 'Exam', detail: 'No live help: the review only' },
+  {
+    mode: 'reverse',
+    label: 'Reverse',
+    detail: 'You play her, and Sam, the expert rep, calls you',
+  },
 ];
 
 export function ModeChoice(props: {
@@ -94,7 +100,20 @@ function ControlButton(props: {
   );
 }
 
-export function DialButton(props: { onClick: () => void; disabled: boolean; again: boolean }) {
+export function DialButton(props: {
+  onClick: () => void;
+  disabled: boolean;
+  again: boolean;
+  /** A reverse call: Sam calls the rep. */
+  reverse?: boolean;
+}) {
+  const label = props.reverse
+    ? props.again
+      ? "Take Sam's call again"
+      : "Take Sam's call"
+    : props.again
+      ? 'Dial again'
+      : 'Dial';
   return (
     <button
       type="button"
@@ -102,7 +121,7 @@ export function DialButton(props: { onClick: () => void; disabled: boolean; agai
       disabled={props.disabled}
       className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-6 py-3 font-medium text-white hover:bg-emerald-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
     >
-      <PhoneIcon /> {props.again ? 'Dial again' : 'Dial'}
+      <PhoneIcon /> {label}
     </button>
   );
 }

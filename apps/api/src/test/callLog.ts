@@ -1,14 +1,26 @@
-// A short, realistic call log for the API's tests, and a stub reviewer.
-import type { CallLog, CallStage, JudgementEventPayload, ReviewDraft } from '@ccc/contracts';
+// A short, realistic call log for the API's tests, and a stub reviewer; a
+// reverse call's log, and a stub for its notes.
+import type {
+  CallLog,
+  CallMode,
+  CallStage,
+  JudgementEventPayload,
+  ReviewDraft,
+} from '@ccc/contracts';
 import { eq } from 'drizzle-orm';
 import type { Db } from '../db/client.ts';
 import { LOCAL_USER_ID, calls } from '../db/schema.ts';
+import type { RepNoter, RepNotesInput } from '../review/noter.ts';
 import type { Reviewer } from '../review/reviewer.ts';
 
-export async function createCall(db: Db, scenarioId = 'medium-finance-director'): Promise<string> {
+export async function createCall(
+  db: Db,
+  scenarioId = 'medium-finance-director',
+  mode: CallMode = 'coached',
+): Promise<string> {
   const [call] = await db
     .insert(calls)
-    .values({ userId: LOCAL_USER_ID, scenarioId, scenarioVersion: 1, mode: 'coached' })
+    .values({ userId: LOCAL_USER_ID, scenarioId, scenarioVersion: 1, mode })
     .returning({ id: calls.id });
   if (!call) throw new Error('no call row');
   return call.id;
@@ -223,4 +235,73 @@ export function stubReviewer(draft: ReviewDraft = sampleDraft) {
     });
   };
   return { reviewer, calls };
+}
+
+const line = (idx: number, speaker: 'rep' | 'prospect', text: string, startMs: number) => ({
+  idx,
+  speaker,
+  text,
+  startMs,
+  endMs: startMs + 2_000,
+  words: null,
+  interrupted: false,
+  stateAfter: null,
+});
+
+/**
+ * A reverse call: the rep played Claire and answered, and Sam, Claude as the
+ * rep, made the call and booked the meeting. His lines are the rep's turns.
+ */
+export function reverseLog(overrides: Partial<CallLog> = {}): CallLog {
+  return {
+    outcome: 'meeting_booked',
+    reason: 'Tuesday at 10am',
+    connectedAt: '2026-09-30T10:00:00.000Z',
+    endedAt: '2026-09-30T10:01:00.000Z',
+    durationMs: 60_000,
+    turns: [
+      line(0, 'prospect', 'Claire Hughes.', 0),
+      line(1, 'rep', "Hi Claire, it's Sam from WattGuard. Have I caught you at a bad time?", 2_500),
+      line(2, 'prospect', 'Go on, quickly.', 5_000),
+      line(3, 'rep', 'Would Tuesday at ten work for twenty minutes?', 7_500),
+      line(4, 'prospect', 'Tuesday at ten is fine.', 10_000),
+    ],
+    events: [
+      { tMs: 12_000, kind: 'meeting', payload: { turn: 2, when: 'Tuesday at 10am', booked: true } },
+      { tMs: 12_100, kind: 'outcome', payload: { outcome: 'meeting_booked' } },
+    ],
+    latency: [],
+    usage: {
+      rep: {
+        model: 'claude-opus-5-5',
+        calls: 2,
+        inputTokens: 1_500,
+        cacheReadInputTokens: 900,
+        cacheCreationInputTokens: 600,
+        outputTokens: 80,
+        costUsd: 0.0123,
+      },
+      tts: { model: 'sonic-3', characters: 900, costUsd: 0.045 },
+    },
+    ...overrides,
+  };
+}
+
+/** Notes a note on each of Sam's lines, recording what it was given. */
+export function stubRepNoter() {
+  const calls: RepNotesInput[] = [];
+  const noter: RepNoter = (input) => {
+    calls.push(input);
+    const notes = input.turns.flatMap((t, i) =>
+      t.speaker === 'rep'
+        ? [{ turn: i + 1, technique: 'Permission opener', note: 'She says yes before any pitch.' }]
+        : [],
+    );
+    return Promise.resolve({
+      notes: { notes, summary: 'Sam earned the meeting.', lessons: ['Ask first.'] },
+      model: 'claude-opus-5-5',
+      costUsd: 0.031,
+    });
+  };
+  return { noter, calls };
 }

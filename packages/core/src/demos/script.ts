@@ -15,6 +15,7 @@ import type {
 } from '@ccc/contracts';
 import { privateFacts } from '../prospect/facts.ts';
 import { languageName } from '../prospect/systemPrompt.ts';
+import { expertPlaybook } from '../rep/playbook.ts';
 
 /** Room for the call as JSON (2–3k tokens) and the thinking before it. */
 export const DEMO_SCRIPT_MAX_TOKENS = 16_000;
@@ -39,13 +40,7 @@ A 10/10 on the scorecard trainees are marked against:
 ${scorecard}
 
 How the expert plays it:
-- Opens with name and company, then earns the next thirty seconds: a permission ask, or an upfront agreement.
-- Gives a reason for the call in her terms: a problem someone in her role would recognise. Never leads with features.
-- Discovery: open questions, one at a time, following up on her exact words until she says what the problem costs her. She does most of the talking.
-- Objections: acknowledges, asks a question to understand, answers briefly, checks it landed. Never argues.
-- Ties one relevant point about ${product.name} to a problem only after she has named it, in a sentence.
-- Closes with a specific day and time for the call, and confirms it back when she agrees.
-- Sounds human: warm, confident, unhurried; one to three short sentences a turn.
+${expertPlaybook(product.name)}
 
 She is a real person, not a pushover. She speaks as her profile says, raises her objections where they fit, and shares a private fact only when a question has earned it. The rep wins her round by skill, not because she gives in. The call ends with the meeting booked for a specific day and time, and her agreeing must be believable.
 

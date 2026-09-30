@@ -22,7 +22,7 @@ const TurnFields = z.object({
   endMs: ms,
   /** Rep turns only, when Deepgram returned word timings. */
   words: z.array(TimedWord).nullable(),
-  /** She was talked over mid-reply (text is what was actually heard). */
+  /** The agent was talked over mid-reply: her, or Sam in a reverse call (text is what was heard). */
   interrupted: z.boolean(),
   /** Rep turns: her state once the turn was judged. Prospect turns: the state she replied under. */
   stateAfter: ProspectState.nullable(),
@@ -155,6 +155,8 @@ export const CallLog = z.object({
   latency: z.array(DebugLatencyPayload),
   usage: z.object({
     prospect: LaneUsage.optional(),
+    /** Sam's replies, in a reverse call. */
+    rep: LaneUsage.optional(),
     judge: LaneUsage.optional(),
     /** The rep's hint requests (coached calls). */
     hint: LaneUsage.optional(),

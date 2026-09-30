@@ -173,6 +173,46 @@ describe('CallRecorder', () => {
     expect(log.usage).not.toHaveProperty('judge');
   });
 
+  it("logs a reverse call the right way round: Sam's lines as the rep's, cut off where she talked over him", () => {
+    const { recorder, at } = recorderAt();
+    at(0);
+    recorder.connected();
+    recorder.prospectTurn({
+      text: 'Voltline, Rachel speaking.',
+      timing: {
+        startedSpeakingAt: sec(100),
+        stoppedSpeakingAt: sec(1_400),
+        committedAt: T0 + 1_500,
+      },
+      interrupted: false,
+      state: null,
+    });
+    recorder.repTurn({
+      text: "Hi Rachel, it's Sam from WattGuard. Have I caught you at a",
+      timing: {
+        startedSpeakingAt: sec(2_000),
+        stoppedSpeakingAt: sec(4_000),
+        committedAt: T0 + 4_100,
+      },
+      repTurn: 1,
+      interrupted: true,
+    });
+    recorder.usage('rep', 'claude-opus-5', {
+      inputTokens: 1_000,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      outputTokens: 100,
+    });
+    const log = recorder.build({ outcome: 'hung_up_by_prospect', stateAfterRepTurn: () => null });
+    expect(log.turns.map((t) => [t.speaker, t.interrupted, t.stateAfter, t.words])).toEqual([
+      ['prospect', false, null, null],
+      ['rep', true, null, null],
+    ]);
+    expect(log.usage.rep).toMatchObject({ calls: 1, costUsd: 0.0075 });
+    expect(log.usage).not.toHaveProperty('prospect');
+    expect(CallLog.safeParse(log).success).toBe(true);
+  });
+
   it('counts the calls that read from the prompt cache', () => {
     const { recorder } = recorderAt();
     const turn = (cacheReadInputTokens: number) => ({

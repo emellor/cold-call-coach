@@ -8,8 +8,8 @@ export interface TranscriptTurn {
   speaker: Speaker;
   text: string;
   /**
-   * The prospect was cut off mid-reply. LiveKit has already truncated `text` to
-   * what was actually heard.
+   * The agent (her, or Sam in a reverse call) was cut off mid-reply. LiveKit
+   * has already truncated `text` to what was actually heard.
    */
   interrupted?: boolean;
 }
@@ -30,12 +30,34 @@ export const CUT_OFF_MARK = '—';
 const ENDS_A_SENTENCE = /[.!?…]["')\]]?$/;
 
 export function buildProspectMessages(turns: readonly TranscriptTurn[]): ChatTurn[] {
+  return conversationMessages(turns, {
+    agent: 'prospect',
+    openingCue: PICKUP_CUE,
+    silenceCue: SILENCE_CUE,
+  });
+}
+
+/**
+ * The conversation as the agent's Claude sees it: the agent's turns are
+ * `assistant` and the other side's are `user`. The prospect is the agent on a
+ * normal call; Sam is on a reverse one (rep/messages.ts).
+ */
+export function conversationMessages(
+  turns: readonly TranscriptTurn[],
+  options: {
+    agent: Speaker;
+    /** Opens the conversation when the agent spoke first: the API needs a user turn first. */
+    openingCue: string;
+    /** Follows a trailing agent turn: Opus rejects a trailing assistant turn (prefill). */
+    silenceCue: string;
+  },
+): ChatTurn[] {
   const messages: ChatTurn[] = [];
 
   for (const turn of turns) {
     let text = turn.text.trim();
     if (!text) continue;
-    const role = turn.speaker === 'rep' ? 'user' : 'assistant';
+    const role = turn.speaker === options.agent ? 'assistant' : 'user';
     if (role === 'assistant' && turn.interrupted && !ENDS_A_SENTENCE.test(text)) {
       text += CUT_OFF_MARK;
     }
@@ -49,7 +71,11 @@ export function buildProspectMessages(turns: readonly TranscriptTurn[]): ChatTur
     }
   }
 
-  if (messages[0]?.role !== 'user') messages.unshift({ role: 'user', content: PICKUP_CUE });
-  if (messages.at(-1)?.role === 'assistant') messages.push({ role: 'user', content: SILENCE_CUE });
+  if (messages[0]?.role !== 'user') {
+    messages.unshift({ role: 'user', content: options.openingCue });
+  }
+  if (messages.at(-1)?.role === 'assistant') {
+    messages.push({ role: 'user', content: options.silenceCue });
+  }
   return messages;
 }

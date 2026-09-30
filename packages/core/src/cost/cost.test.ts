@@ -58,6 +58,14 @@ describe('costBreakdown', () => {
     expect(unpriced).toMatchObject({ totalUsd: 0, incomplete: true });
   });
 
+  it("prices Sam's replies on a reverse call as their own line, after hers", () => {
+    const cost = costBreakdown({ rep: lane(0.0512), tts: usage.tts }, null, 2);
+    expect(cost.lines.map((l) => [l.key, l.usd])).toEqual([
+      ['rep', 0.0512],
+      ['tts', 0.1075],
+    ]);
+  });
+
   it('is empty before the call log arrives', () => {
     expect(costBreakdown(null, null, 2)).toEqual({
       totalUsd: 0,

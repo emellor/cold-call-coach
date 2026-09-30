@@ -10,6 +10,7 @@ import { Link, useLocation, useSearch } from 'wouter';
 import { AppHeader } from '../components/AppHeader.tsx';
 import { CoachPanel } from '../call/CoachPanel.tsx';
 import { ProspectStage } from '../call/ProspectStage.tsx';
+import { CharacterCard } from '../call/CharacterCard.tsx';
 import { AgentNotices, HintCard, NoticeLine, TipCard } from '../call/cards.tsx';
 import { DialButton, LiveControls, ModeChoice } from '../call/controls.tsx';
 import { type CallView, REVIEW_REDIRECT_MS, reviewPathAfter, useCall } from '../call/useCall.ts';
@@ -69,6 +70,9 @@ export function CallPage() {
   // The call in progress (or just ended) keeps its prospect while the picker moves on.
   const [dialled, setDialled] = useState<ScenarioSummary>();
   const shown = live ? dialled : selected;
+  // A reverse call swaps the roles: the rep plays her, and Sam calls.
+  const reverse = (live ? view.mode : mode) === 'reverse';
+  const agentName = reverse ? 'Sam' : firstName(shown);
 
   const onDial = () => {
     if (!selected) return;
@@ -115,14 +119,26 @@ export function CallPage() {
           <section aria-label="Call" className="flex min-w-0 flex-col gap-3">
             <div className="relative">
               <ProspectStage
-                name={shown?.prospect.name ?? 'Prospect'}
-                role={shown ? `${shown.prospect.role}, ${shown.prospect.company}` : ''}
+                label={reverse ? 'Caller' : 'Prospect'}
+                name={reverse ? 'Sam' : (shown?.prospect.name ?? 'Prospect')}
+                role={
+                  reverse
+                    ? 'The expert rep, calling you'
+                    : shown
+                      ? `${shown.prospect.role}, ${shown.prospect.company}`
+                      : ''
+                }
               >
                 <div className="absolute top-3 left-3 flex items-center gap-2">
-                  <StatusChip view={view} prospect={firstName(shown)} />
+                  <StatusChip view={view} prospect={agentName} />
                   {live && view.mode === 'exam' && (
                     <p className="rounded-full bg-slate-950/70 px-3 py-1 text-sm text-slate-300 backdrop-blur-sm">
                       Exam: no live help
+                    </p>
+                  )}
+                  {live && view.mode === 'reverse' && (
+                    <p className="rounded-full bg-fuchsia-950/80 px-3 py-1 text-sm text-fuchsia-100 backdrop-blur-sm">
+                      Reverse: you're {firstName(shown)}
                     </p>
                   )}
                 </div>
@@ -162,7 +178,7 @@ export function CallPage() {
                         href={reviewPath}
                         className="mt-2 inline-block text-sm text-sky-300 underline"
                       >
-                        See your review
+                        {view.mode === 'reverse' ? "See Sam's notes" : 'See your review'}
                       </Link>
                     )}
                   </div>
@@ -182,11 +198,13 @@ export function CallPage() {
               <CoachPanel coach={view.coach} />
             ) : (
               <>
+                {reverse && shown && <CharacterCard key={shown.id} scenarioId={shown.id} />}
                 {scenarios.status === 'ready' && available.length > 0 && (
                   <ScenarioPicker
                     scenarios={available}
                     selectedId={(live ? dialled : selected)?.id}
                     onSelect={setChosenId}
+                    legend={reverse ? 'Who are you playing?' : 'Who are you calling?'}
                     onAdd={() => {
                       setPickerNote(null);
                       setAdding(true);
@@ -210,7 +228,9 @@ export function CallPage() {
                   {scenarios.status === 'error' && scenarios.message}
                   {scenarios.status === 'ready' &&
                     (shown
-                      ? `Goal: ${shown.winCondition}.${live ? '' : ' Put your headset on and press Dial.'}`
+                      ? reverse
+                        ? `Sam's goal: ${shown.winCondition}.${live ? '' : ` Put your headset on, press Take Sam's call, and answer as ${firstName(shown)}.`}`
+                        : `Goal: ${shown.winCondition}.${live ? '' : ' Put your headset on and press Dial.'}`
                       : 'No scenarios found: check the API log.')}
                   {!live && shown?.custom && (
                     <>
@@ -233,9 +253,11 @@ export function CallPage() {
             <h2 className="px-4 pt-4 text-sm font-medium text-slate-300">Transcript</h2>
             <div className="min-h-48 flex-1 overflow-y-auto">
               {view.room ? (
-                <Transcript prospectName={firstName(dialled)} />
+                <Transcript agentName={view.mode === 'reverse' ? 'Sam' : firstName(dialled)} />
               ) : (
-                <p className="p-4 text-sm text-slate-500">Press Dial to start a call.</p>
+                <p className="p-4 text-sm text-slate-500">
+                  {reverse ? "Press Take Sam's call to start." : 'Press Dial to start a call.'}
+                </p>
               )}
             </div>
             <div className="border-t border-slate-800">
@@ -260,7 +282,12 @@ export function CallPage() {
             ) : (
               <div className="flex flex-wrap items-center justify-center gap-3">
                 <ModeChoice mode={mode} onChange={setMode} />
-                <DialButton onClick={onDial} disabled={!selected} again={view.phase === 'ended'} />
+                <DialButton
+                  onClick={onDial}
+                  disabled={!selected}
+                  again={view.phase === 'ended'}
+                  reverse={mode === 'reverse'}
+                />
               </div>
             )}
             {view.notice && <NoticeLine key={view.notice.id} notice={view.notice} />}

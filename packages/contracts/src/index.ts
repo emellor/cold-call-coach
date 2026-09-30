@@ -9,6 +9,7 @@ export * from './http.ts';
 export * from './judge.ts';
 export * from './metrics.ts';
 export * from './prospectDraft.ts';
+export * from './repNotes.ts';
 export * from './review.ts';
 export * from './rpc.ts';
 export * from './scenario.ts';

@@ -227,6 +227,20 @@ describe('useCall', () => {
     expect(fakes.ring.stop).toHaveBeenCalled();
   });
 
+  it('ends a reverse call as her hanging up, since the rep is playing her', async () => {
+    mockCreateCall();
+    const { result } = renderHook(() => useCall());
+    await act(() => result.current.dial({ ...request, mode: 'reverse' }));
+    await act(() => lastRoom().deliver('call.state', { phase: 'connected' }));
+    act(() => result.current.hangUp());
+    expect(result.current.view).toMatchObject({
+      phase: 'ended',
+      mode: 'reverse',
+      outcome: 'hung_up_by_prospect',
+      message: 'You hung up.',
+    });
+  });
+
   it('surfaces the API’s own message when the call cannot be created', async () => {
     mockCreateCall(503, { error: 'LiveKit is not configured on the server: set LIVEKIT_URL.' });
     const { result } = renderHook(() => useCall());
@@ -537,6 +551,17 @@ describe('describeOutcome', () => {
       'The 15-minute call limit was reached.',
     );
     expect(describeOutcome('error')).toBe('The call failed.');
+  });
+
+  it('tells it from the other side in a reverse call, where the rep is her and Sam the rep', () => {
+    expect(describeOutcome('meeting_booked', 'Tuesday at 10am', 'reverse')).toBe(
+      'Sam booked the meeting: Tuesday at 10am.',
+    );
+    expect(describeOutcome('hung_up_by_prospect', undefined, 'reverse')).toBe('You hung up.');
+    expect(describeOutcome('ended_by_rep', 'Meeting booked', 'reverse')).toBe(
+      'Sam ended the call.',
+    );
+    expect(describeOutcome('error', undefined, 'reverse')).toBe('The call failed.');
   });
 });
 

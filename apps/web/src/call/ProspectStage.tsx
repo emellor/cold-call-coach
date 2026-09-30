@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 interface ProspectStageProps {
   name: string;
   role: string;
+  /** The region's name: who is on the other end. Sam is the caller in a reverse call. */
+  label?: string;
   /** Overlays: call status, tips, help, "Call ended". */
   children?: ReactNode;
 }
@@ -14,12 +16,12 @@ const initials = (name: string) =>
     .join('')
     .slice(0, 2);
 
-/** The frame the call happens in: who she is, with the call's overlays on top. */
-export function ProspectStage({ name, role, children }: ProspectStageProps) {
+/** The frame the call happens in: who is on the line, with the call's overlays on top. */
+export function ProspectStage({ name, role, label = 'Prospect', children }: ProspectStageProps) {
   return (
     <div
       role="region"
-      aria-label="Prospect"
+      aria-label={label}
       className="relative aspect-video w-full overflow-hidden rounded-xl border border-slate-800 bg-gradient-to-b from-slate-800 via-slate-900 to-slate-950"
     >
       <div className="absolute inset-0 flex items-center justify-center">

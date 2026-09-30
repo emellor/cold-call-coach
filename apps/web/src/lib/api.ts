@@ -2,6 +2,7 @@ import {
   ApiError,
   CallDetail,
   CallListResponse,
+  CharacterResponse,
   CheatSheetDetail,
   CheatSheetListResponse,
   type CreateCallRequest,
@@ -86,6 +87,13 @@ export function createCall(body: CreateCallRequest): Promise<CreateCallResponse>
 /** `GET /api/scenarios`: what the picker offers, easiest first. */
 export function fetchScenarios(signal?: AbortSignal): Promise<ScenarioListResponse> {
   return request(ScenarioListResponse, '/api/scenarios', { signal });
+}
+
+/** `GET /api/scenarios/:id/character`: the whole of her, for a reverse call where you play her. */
+export function fetchCharacter(id: string, signal?: AbortSignal): Promise<CharacterResponse> {
+  return request(CharacterResponse, `/api/scenarios/${encodeURIComponent(id)}/character`, {
+    signal,
+  });
 }
 
 /** `POST /api/scenarios` ("Add new"): Claude writes her from the description; takes 20–40 s. */

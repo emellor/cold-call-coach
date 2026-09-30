@@ -82,7 +82,9 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
 
 - **One job is one call.** `runCall.ts` builds the session; `CallController` (`call.ts`) owns
   the lifecycle: ring 2–5 s with the rep's audio detached, pick up with `session.say` (no LLM),
-  enforce the 15-minute cap, end exactly once.
+  enforce the 15-minute cap, end exactly once. The pipeline both kinds of call share (the
+  session with Deepgram and Cartesia, notices and the cost watch, provider errors) is in
+  `pipeline.ts`; a reverse call branches off to `reverseCall.ts` once the scenario is loaded.
 - **The prospect calls Claude from `ProspectAgent.llmNode`.** LiveKit only runs `llmNode` when
   an `LLM` instance is configured, so `DirectClaudeLLM` is a placeholder that must stay; its
   `chat()` is never called. Don't swap in `@livekit/agents-plugin-anthropic`: it can't set
@@ -299,10 +301,54 @@ pnpm report:latency         # p50/p90 per stage, cache hits and cost over the lo
 - A demo from a brief has **Cheat sheet for this call**, which sends the demo's brief as
   the profile.
 
+## Reverse calls
+
+- **The roles swap** (`CallMode` `reverse`; migration 0011 widens `calls_mode_check`). The
+  rep plays one of the prospects, and Sam, Claude as an expert rep, makes the call. The
+  rep's turns are the prospect's in the log, and Sam's are the rep's, so every reader of
+  the log sees the call the right way round.
+- **Agent** (`reverseCall.ts`, `rep/`):
+  - `RepAgent` is `ProspectAgent` without her brain or note. `chatContextToTurns`, told
+    the agent is the rep, and core's `buildRepMessages` put her lines as the user turn.
+    `repRequest` sends `REP_TOOLS` (`book_meeting`, `end_call`) on `REP_MODEL`/`REP_EFFORT`,
+    which default to the prospect lane's values.
+  - `actOnRepReply` runs only for a reply heard in full, meeting first. A meeting Sam
+    books stands: the rep, playing her, decides whether to agree, so there is no
+    `meetingAllowed` check.
+  - `CallController` picks up with `openingLine: null`, so the rep speaks first. If nobody
+    has spoken `NUDGE_MS` after the pick-up, Sam checks the line once with `session.say`.
+  - `reverseControls` allows hang-up only. The rep hanging up is `hung_up_by_prospect`;
+    Sam's `end_call` is `ended_by_rep`.
+  - There is no STT tap, as the words Deepgram times are hers. Usage goes on the `rep` lane.
+  - His voice is `REP_VOICE_ID`, else `CARTESIA_VOICE_ID`.
+- **Sam's prompt** (`core/rep/systemPrompt.ts`) has only what a rep knows before dialling:
+  her name, role, company and `companyFacts`. A test asserts none of her private facts,
+  personality or objections are in it.
+  - It shares `expertPlaybook` with the demo writer, whose prompt stayed byte-identical
+    when the playbook moved.
+  - The rubric's 10/10 marks come from `InternalScenarioResponse.rubric`, which is optional:
+    an agent deployed before its API still loads every scenario, and Sam then plays to
+    the playbook alone.
+- **The character card** (`GET /api/scenarios/:id/character`, `CharacterResponse`) is the
+  one route that sends her private facts to the web, since the rep plays her. The web
+  shows it only in reverse mode (`call/CharacterCard.tsx`).
+- **Notes, not a review.** The review queue sees `mode = 'reverse'` and writes notes on
+  Sam's lines instead (`review/noter.ts`, `core/rep/notes.ts`).
+  - One structured-output request for `RepNotesDraft` on `REVIEW_MODEL` at medium effort,
+    with a 2-minute cap.
+  - `repNotesFrom` keeps one note per line of Sam's and drops notes that point elsewhere.
+  - They are stored in `reviews.notes` with `result` null, and priced as the review line.
+  - They are skipped when either side never spoke.
+  - The web shows them on `review/ReverseCallPage.tsx` in place of the scorecard.
+- **Testing it locally** with dummy Deepgram and Cartesia keys: Sam's `llmNode` runs, but
+  his replies never reach the conversation, because TTS fails before anything plays.
+  LiveKit's room text input (topic `lk.chat`, from a participant joined as the rep) stands
+  in for speech. Real voices need a microphone and real keys.
+
 ## The live coach and the controls (M5)
 
-- **Exam calls get none of this.** The agent publishes no `coach.*` topic, and every
-  control except hang-up refuses. The web hides the panel and the buttons as well.
+- **Exam and reverse calls get none of this.** The agent publishes no `coach.*` topic, and
+  every control except hang-up refuses. The web hides the panel and the buttons as well.
 - **`LiveCoach`** (`apps/agent/src/coach/`) publishes `coach.metrics` every 500 ms.
   - Talking time and the monologue come from `TalkClock` (`core/coach/talkClock.ts`), fed by
     LiveKit's `UserStateChanged`/`AgentStateChanged`. The VAD's `minSilenceDuration` is taken

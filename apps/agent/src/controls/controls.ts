@@ -84,7 +84,19 @@ function herLineBefore(items: readonly llm.ChatItem[], index: number): string | 
   return null;
 }
 
-export class CallControls {
+/**
+ * What the RPC methods call: a normal call's CallControls, or a reverse call's,
+ * where the rep plays her and can only hang up (rep/controls.ts).
+ */
+export interface Controls {
+  pause(): RpcOk;
+  resume(): RpcOk;
+  hint(): Promise<HintResponse>;
+  rewind(): Promise<RpcOk>;
+  hangup(): RpcOk;
+}
+
+export class CallControls implements Controls {
   readonly #deps: CallControlsDeps;
   readonly #now: () => number;
   #pausedAt: number | null = null;

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  CharacterResponse,
   CreateScenarioResponse,
   INTERNAL_SECRET_HEADER,
   InternalScenarioResponse,
@@ -191,6 +192,34 @@ describe.skipIf(!hasDb)('scenario routes (real Postgres)', () => {
     });
   });
 
+  describe('GET /api/scenarios/:id/character (a reverse call: the rep plays her)', () => {
+    it('gives the rep the whole of her, private facts and objections included', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/scenarios/medium-finance-director/character',
+      });
+      expect(res.statusCode).toBe(200);
+      const { prospect } = CharacterResponse.parse(res.json());
+      expect(prospect).toMatchObject({
+        name: 'Claire Hughes',
+        openingLine: expect.any(String) as unknown,
+      });
+      expect(prospect.hidden.pains.length).toBeGreaterThan(0);
+      expect(prospect.objections.length).toBeGreaterThan(0);
+      // Her thresholds and voice stay on the server even so.
+      for (const word of ['patience', 'meetingAt', 'voiceId']) {
+        expect(res.body).not.toContain(word);
+      }
+    });
+
+    it('answers 404 for an unknown prospect and 400 for a malformed id', async () => {
+      const get = (id: string) =>
+        app.inject({ method: 'GET', url: `/api/scenarios/${id}/character` });
+      expect((await get('nobody-home')).statusCode).toBe(404);
+      expect((await get('Not_Kebab')).statusCode).toBe(400);
+    });
+  });
+
   describe('GET /internal/scenarios/:id', () => {
     const get = (id: string, headers: Record<string, string> = {}) =>
       app.inject({ method: 'GET', url: `/internal/scenarios/${id}`, headers });
@@ -202,6 +231,8 @@ describe.skipIf(!hasDb)('scenario routes (real Postgres)', () => {
       expect(body.scenario.prospect.name).toBe('Denise Walsh');
       expect(body.scenario.prospect.hidden.pains).toHaveLength(2);
       expect(body.product).toEqual(testCatalog.product);
+      // Sam plays to its 10/10 marks in a reverse call.
+      expect(body.rubric?.id).toBe(body.scenario.rubricId);
     });
 
     it('answers 401 without the secret or with the wrong one', async () => {

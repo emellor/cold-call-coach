@@ -5,7 +5,7 @@
 import { REP_IDENTITY, type RpcMethod, RpcMethods } from '@ccc/contracts';
 import { RpcError, type RpcInvocationData } from '@livekit/rtc-node';
 import type { z } from 'zod';
-import { type CallControls, ControlError, type ControlLogger } from './controls.ts';
+import { ControlError, type ControlLogger, type Controls } from './controls.ts';
 
 export interface RpcHost {
   registerRpcMethod(method: string, handler: (data: RpcInvocationData) => Promise<string>): void;
@@ -13,11 +13,7 @@ export interface RpcHost {
 
 const fail = (message: string) => new RpcError(RpcError.ErrorCode.APPLICATION_ERROR, message);
 
-export function registerControls(
-  host: RpcHost,
-  controls: CallControls,
-  logger: ControlLogger,
-): void {
+export function registerControls(host: RpcHost, controls: Controls, logger: ControlLogger): void {
   const register = <S extends z.ZodType>(
     rpc: RpcMethod<S>,
     run: () => z.input<S> | Promise<z.input<S>>,

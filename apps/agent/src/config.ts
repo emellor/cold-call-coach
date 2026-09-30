@@ -61,6 +61,11 @@ const CallConfig = z.object({
   /** The judge (and, from M5, the coach's hints). */
   COACH_MODEL: blankAsUnset(z.string().min(1).default('claude-opus-5-5')),
   COACH_EFFORT: blankAsUnset(Effort.default('low')),
+  /** Sam's replies in a reverse call, where Claude makes the call and the rep plays her. */
+  REP_MODEL: blankAsUnset(z.string().min(1).default('claude-opus-5-5')),
+  REP_EFFORT: blankAsUnset(Effort.default('low')),
+  /** Sam's voice in a reverse call; CARTESIA_VOICE_ID when unset. */
+  REP_VOICE_ID: blankAsUnset(z.string().min(1).optional()),
   /**
    * `multilingual` is PLAN.md's text-based detector (@livekit/agents-plugin-livekit,
    * model fetched by `download-files`). `audio` is LiveKit's newer on-device audio

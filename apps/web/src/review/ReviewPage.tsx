@@ -4,6 +4,7 @@ import { Link } from 'wouter';
 import { AppHeader } from '../components/AppHeader.tsx';
 import { rerunReview } from '../lib/api.ts';
 import { CostSection } from './CostSection.tsx';
+import { ReverseCallPage } from './ReverseCallPage.tsx';
 import { Scorecard } from './Scorecard.tsx';
 import { OUTCOME_LABELS, OUTCOME_TONE, STAGE_LABELS, dateTime, duration } from './format.ts';
 import { MOMENT_LABELS, walkthrough } from './moments.ts';
@@ -176,7 +177,16 @@ export function ReviewPage({ id }: { id: string }) {
             Couldn't load this call: {state.message}
           </p>
         )}
-        {state.kind === 'loaded' && (
+        {state.kind === 'loaded' && state.detail.call.mode === 'reverse' && (
+          <ReverseCallPage
+            detail={state.detail}
+            gaveUp={state.gaveUp}
+            onRerun={() => void rerun()}
+            rerunning={rerunning}
+            rerunError={rerunError}
+          />
+        )}
+        {state.kind === 'loaded' && state.detail.call.mode !== 'reverse' && (
           <Loaded
             detail={state.detail}
             gaveUp={state.gaveUp}

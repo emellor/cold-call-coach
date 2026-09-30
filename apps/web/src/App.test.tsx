@@ -95,6 +95,57 @@ describe('App', () => {
     expect(window.location.pathname + window.location.search).toBe('/');
   });
 
+  it('sets up a reverse call: the rep plays her, with all of her in view, and Sam is the caller', async () => {
+    const character = {
+      prospect: {
+        name: 'Claire Hughes',
+        role: 'Finance Director',
+        company: 'Harrow & Finch Logistics',
+        companyFacts: '3 warehouses in the Midlands',
+        personality: 'direct, numbers-first, sceptical of vendors',
+        speakingStyle: "clipped, says 'right' and 'look'",
+        openingLine: 'Claire Hughes.',
+        hidden: {
+          pains: ['energy bills up about 40% in two years'],
+          currentSolution: "the supplier's portal plus a spreadsheet",
+          decisionProcess: 'signs off anything under £20k',
+          timing: 'budget planning starts in January',
+        },
+        objections: ['Just send me an email'],
+      },
+    };
+    mockApi({
+      '/api/health': healthy,
+      '/api/scenarios': () => json(200, SCENARIOS),
+      '/api/scenarios/medium-finance-director/character': () => json(200, character),
+    });
+    const { unmount } = render(<App />);
+    fireEvent.click(await screen.findByRole('radio', { name: /Claire Hughes/ }));
+    // Coached and exam calls never show what she hides.
+    expect(screen.queryByRole('region', { name: "You're playing" })).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: /^Reverse/ }));
+
+    expect(screen.getByRole('group', { name: 'Who are you playing?' })).toBeInTheDocument();
+    const card = await screen.findByRole('region', { name: "You're playing" });
+    expect(await within(card).findByText(/energy bills up about 40%/)).toBeInTheDocument();
+    expect(card).toHaveTextContent('Answer the phone with “Claire Hughes.”');
+    expect(card).toHaveTextContent('Who decides: signs off anything under £20k');
+    expect(card).toHaveTextContent('“Just send me an email”');
+    expect(card).toHaveTextContent('Sam knows only her name, role and company.');
+    const caller = within(screen.getByRole('region', { name: 'Caller' }));
+    expect(caller.getByText('Sam')).toBeInTheDocument();
+    expect(caller.getByText('The expert rep, calling you')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: "Take Sam's call" })).toBeEnabled();
+    expect(
+      screen.getByText(/^Sam's goal: Agrees to a 20-minute call at a specific day and time\./),
+    ).toHaveTextContent('answer as Claire.');
+    unmount();
+
+    // The choice is remembered, like the others.
+    render(<App />);
+    expect(await screen.findByRole('radio', { name: /^Reverse/ })).toBeChecked();
+  });
+
   it('dials coached calls unless the rep picks exam, and remembers the choice', async () => {
     mockApi({ '/api/health': healthy, '/api/scenarios': () => json(200, SCENARIOS) });
     const { unmount } = render(<App />);

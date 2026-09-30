@@ -17,7 +17,8 @@ export interface CallControllerDeps {
   /** Ends the LiveKit job; called once, after the final `call.state`. */
   shutdown(reason: string): void;
   logger: Logger;
-  openingLine: string;
+  /** Her first words as she picks up; null in a reverse call, where the rep answers. */
+  openingLine: string | null;
   random?: () => number;
   /** She has just picked up (before `connected` is published). */
   onConnected?: () => void;
@@ -37,7 +38,7 @@ export interface CallEnding {
  * The call's lifecycle: ring, pick up with the scenario's opening line (no LLM,
  * so the pick-up is instant), enforce the 15-minute ceiling, and end exactly
  * once whichever side ends it. A booked meeting is the call's outcome however
- * it then ends.
+ * it then ends. In a reverse call the rep picks up, so nothing is said for them.
  */
 export class CallController {
   readonly #deps: CallControllerDeps;
@@ -85,7 +86,7 @@ export class CallController {
     this.#deps.onConnected?.();
     session.input.setAudioEnabled(true);
     await publisher.publish(Topics.callState, { phase: 'connected' });
-    session.say(openingLine);
+    if (openingLine !== null) session.say(openingLine);
 
     void this.#sleep(MAX_CALL_SECONDS * 1000).then(() => {
       if (this.#phase === 'connected')

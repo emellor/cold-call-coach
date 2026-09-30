@@ -5,6 +5,7 @@ import {
   type CallReview,
   type CallSummary,
   ProspectState,
+  RepNotes,
   ReviewResult,
   TimedWord,
 } from '@ccc/contracts';
@@ -185,9 +186,11 @@ export async function getCallDetail(
   let review: CallReview | null = null;
   if (reviewRow) {
     const result = reviewRow.result === null ? null : ReviewResult.safeParse(reviewRow.result);
+    const notes = reviewRow.notes === null ? null : RepNotes.safeParse(reviewRow.notes);
     review = {
       status: reviewRow.status,
       result: result?.success ? result.data : null,
+      notes: notes?.success ? notes.data : null,
       error:
         result && !result.success
           ? 'This review was stored in an older format; rerun it.'

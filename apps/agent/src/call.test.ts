@@ -5,7 +5,7 @@ import { CallController, RING_MS, ringDelayMs } from './call.ts';
 
 initializeLogger({ pretty: false, level: 'silent' });
 
-function setup(random = () => 0.5) {
+function setup(random = () => 0.5, openingLine: string | null = 'Claire Hughes.') {
   const events: string[] = [];
   const deps = {
     session: {
@@ -20,7 +20,7 @@ function setup(random = () => 0.5) {
     },
     shutdown: vi.fn((reason: string) => events.push(`shutdown:${reason}`)),
     logger: log(),
-    openingLine: 'Claire Hughes.',
+    openingLine,
     random,
   };
   return { controller: new CallController(deps), deps, events };
@@ -51,6 +51,15 @@ describe('CallController', () => {
       `${Topics.callState.name}:{"phase":"connected"}`,
       'say:Claire Hughes.',
     ]);
+    expect(controller.phase).toBe('connected');
+  });
+
+  it('picks up in silence on a reverse call, where the rep answers', async () => {
+    const { controller, events } = setup(() => 0, null);
+    const pickUp = controller.ringAndPickUp();
+    await vi.advanceTimersByTimeAsync(RING_MS.min);
+    await pickUp;
+    expect(events.slice(2)).toEqual(['audio:on', `${Topics.callState.name}:{"phase":"connected"}`]);
     expect(controller.phase).toBe('connected');
   });
 

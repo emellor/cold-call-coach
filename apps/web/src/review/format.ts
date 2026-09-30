@@ -17,6 +17,15 @@ export const OUTCOME_LABELS: Record<CallOutcome, string> = {
   error: 'Call failed',
 };
 
+/** A reverse call's outcomes: the rep played her, and Sam made the call. */
+export const REVERSE_OUTCOME_LABELS: Record<CallOutcome, string> = {
+  meeting_booked: 'Sam booked the meeting',
+  hung_up_by_prospect: 'You hung up',
+  ended_by_rep: 'Sam ended the call',
+  timeout: 'Time limit reached',
+  error: 'Call failed',
+};
+
 export const OUTCOME_TONE: Record<CallOutcome, string> = {
   meeting_booked: 'bg-emerald-500/15 text-emerald-300',
   hung_up_by_prospect: 'bg-rose-500/15 text-rose-300',
@@ -49,6 +58,7 @@ export function money(usd: number | null): string {
 
 export const COST_LABELS: Record<CostKey, string> = {
   prospect: 'Her replies',
+  rep: "Sam's replies",
   judge: 'The coach judging your turns',
   hint: 'Get help',
   review: 'This review',

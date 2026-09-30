@@ -5,7 +5,8 @@ hear it ring. A prospect answers in a natural voice: she objects, gets impatient
 up if you ramble and agrees to a meeting only when you earn it. A coach shows live cues
 during the call, and afterwards you get a scorecard with "say this instead" corrections.
 Demo calls show an expert making the call, and a cheat sheet is the page of notes to
-have in front of you on a real one.
+have in front of you on a real one. In a reverse call you play the prospect, and the expert
+calls you: you hear the ideal answer to whatever you throw at him, live.
 
 The design is in [docs/PLAN.md](docs/PLAN.md); it is built milestone by milestone from
 [docs/PROMPTS.md](docs/PROMPTS.md).
@@ -172,6 +173,40 @@ Every quote is checked against the transcript before it's shown. The review drop
 it can't find, so each criticism uses your actual words. **History** lists every call
 with its outcome, score and length. A review needs `ANTHROPIC_API_KEY` on the API. Without
 one, the page says so, and **Try again** reruns the review once the key is set.
+
+## Reverse calls
+
+Choose **Reverse** next to **Dial** to swap roles: you play the prospect, and Sam, Claude
+as an expert WattGuard rep, calls you. Push back, go quiet or try to get rid of him, and
+you hear how an expert answers it, live and in his own voice.
+
+- **Who you play.** Pick her in the picker (**Who are you playing?**), as for any call: a
+  shipped prospect, or someone you made with **Add new**, such as an energy broker. While
+  you play her, the page shows the whole of her:
+  - how she answers the phone;
+  - her personality and way of talking;
+  - what she keeps to herself: her pains, what she uses today, who decides, and her timing;
+  - the objections to raise.
+
+  Seeing that gives away what she hides, so a call to her afterwards is easier.
+
+- **What Sam knows.** Only what a rep would before dialling: her name, role and company,
+  and what's public about the company. The rest he has to earn with questions, as you
+  would. He plays to the same playbook as the demo calls, and to the 10/10 marks of the
+  scorecard your own calls are reviewed on.
+- **The call.** Press **Take Sam's call**. It rings, you pick up, and you speak first, as
+  she would: "Claire Hughes." If you say nothing, Sam checks the line after a few seconds.
+  There's no coach, pause, Get help or rewind: hang up with **Esc** or the button. Agree to
+  a specific day and time, and Sam books the meeting; he ends the call after his goodbye.
+- **Afterwards**, instead of a scorecard, Claude writes notes on Sam's side. Under each of
+  his lines is the technique and why it worked there, or what would have been better. A
+  summary and the patterns to copy come first. It's one request on `REVIEW_MODEL` at medium
+  effort, priced on the call's page.
+- **His voice** is `REP_VOICE_ID` on the agent, or `CARTESIA_VOICE_ID` until you set it. Pick
+  one from Cartesia's library that sounds unlike your prospects.
+- **Cost.** Sam's replies run on `REP_MODEL` (Opus 5.5 at low effort unless set). There's no
+  judge on every turn and no Get help, so a reverse call costs less than a coached one of
+  the same length. Deepgram and Cartesia cost the same as on any call.
 
 ## Demo calls
 

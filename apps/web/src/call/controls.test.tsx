@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { LiveControls, ModeChoice } from './controls.tsx';
+import { DialButton, LiveControls, ModeChoice } from './controls.tsx';
 import { type CallShortcuts, shortcutFor, useShortcuts } from './useShortcuts.ts';
 
 function controls(overrides: Partial<Parameters<typeof LiveControls>[0]> = {}) {
@@ -26,6 +26,28 @@ describe('ModeChoice', () => {
     expect(screen.getByRole('radio', { name: /Coached/ })).toBeChecked();
     fireEvent.click(screen.getByRole('radio', { name: /Exam: No live help/ }));
     expect(onChange).toHaveBeenCalledWith('exam');
+  });
+
+  it('offers a reverse call, where the rep plays her and Sam calls', () => {
+    const onChange = vi.fn();
+    render(<ModeChoice mode="coached" onChange={onChange} />);
+    fireEvent.click(
+      screen.getByRole('radio', {
+        name: 'Reverse: You play her, and Sam, the expert rep, calls you',
+      }),
+    );
+    expect(onChange).toHaveBeenCalledWith('reverse');
+  });
+});
+
+describe('DialButton', () => {
+  it("dials her, or takes Sam's call in a reverse call", () => {
+    const { rerender } = render(<DialButton onClick={vi.fn()} disabled={false} again={false} />);
+    expect(screen.getByRole('button', { name: 'Dial' })).toBeInTheDocument();
+    rerender(<DialButton onClick={vi.fn()} disabled={false} again={false} reverse />);
+    expect(screen.getByRole('button', { name: "Take Sam's call" })).toBeInTheDocument();
+    rerender(<DialButton onClick={vi.fn()} disabled={false} again reverse />);
+    expect(screen.getByRole('button', { name: "Take Sam's call again" })).toBeInTheDocument();
   });
 });
 
