@@ -2,8 +2,11 @@ import { REP_IDENTITY } from '@ccc/contracts';
 import { useTranscriptions } from '@livekit/components-react';
 import { useEffect, useMemo, useRef } from 'react';
 
-/** The live transcript, both sides, from LiveKit's `lk.transcription` topic. */
-export function Transcript({ prospectName }: { prospectName: string }) {
+/**
+ * The live transcript, both sides, from LiveKit's `lk.transcription` topic.
+ * `agentName` labels the agent's lines: her first name, or Sam in a reverse call.
+ */
+export function Transcript({ agentName }: { agentName: string }) {
   const transcriptions = useTranscriptions();
   const lines = useMemo(
     () =>
@@ -20,7 +23,9 @@ export function Transcript({ prospectName }: { prospectName: string }) {
 
   if (lines.length === 0) {
     return (
-      <p className="p-4 text-sm text-slate-500">The transcript appears here once she answers.</p>
+      <p className="p-4 text-sm text-slate-500">
+        The transcript appears here once the call connects.
+      </p>
     );
   }
 
@@ -30,7 +35,7 @@ export function Transcript({ prospectName }: { prospectName: string }) {
         const isRep = line.participantInfo.identity === REP_IDENTITY;
         return (
           <li key={line.streamInfo.id} className={isRep ? 'self-end text-right' : 'self-start'}>
-            <span className="block text-xs text-slate-500">{isRep ? 'You' : prospectName}</span>
+            <span className="block text-xs text-slate-500">{isRep ? 'You' : agentName}</span>
             <span
               className={`inline-block max-w-[34ch] rounded-2xl px-3 py-2 text-sm leading-snug ${
                 isRep ? 'bg-sky-700/60 text-sky-50' : 'bg-slate-800 text-slate-100'

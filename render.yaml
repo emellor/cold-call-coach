@@ -107,6 +107,13 @@ services:
         value: claude-opus-5-5
       - key: COACH_EFFORT
         value: low
+      # Sam, the rep who calls in a reverse call; his voice falls back to CARTESIA_VOICE_ID.
+      - key: REP_MODEL
+        value: claude-opus-5-5
+      - key: REP_EFFORT
+        value: low
+      - key: REP_VOICE_ID
+        sync: false
 
 databases:
   - name: cold-call-coach-db

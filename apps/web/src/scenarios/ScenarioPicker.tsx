@@ -14,14 +14,23 @@ interface ScenarioPickerProps {
   onAdd: () => void;
   /** Locked while a call is live. */
   disabled: boolean;
+  /** The question above the cards; in a reverse call the rep picks who to play. */
+  legend?: string;
 }
 
 /** Who you're calling: one card per scenario, the shipped ones easiest first, then yours. */
 export function ScenarioPicker(props: ScenarioPickerProps) {
-  const { scenarios, selectedId, onSelect, onAdd, disabled } = props;
+  const {
+    scenarios,
+    selectedId,
+    onSelect,
+    onAdd,
+    disabled,
+    legend = 'Who are you calling?',
+  } = props;
   return (
     <fieldset disabled={disabled} className="min-w-0">
-      <legend className="mb-2 text-sm font-medium text-slate-300">Who are you calling?</legend>
+      <legend className="mb-2 text-sm font-medium text-slate-300">{legend}</legend>
       <div className="grid gap-2 sm:grid-cols-3">
         {scenarios.map((s) => {
           const selected = s.id === selectedId;

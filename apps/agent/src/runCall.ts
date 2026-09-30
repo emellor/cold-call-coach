@@ -1,6 +1,5 @@
 import {
   type CallLog,
-  type CallNoticePayload,
   DispatchMetadata,
   type InternalScenarioResponse,
   REP_IDENTITY,
@@ -12,13 +11,11 @@ import {
   buildProspectSystemPrompt,
   stageStatuses,
 } from '@ccc/core';
-import { type JobContext, type VAD, inference, log, voice } from '@livekit/agents';
-import * as cartesia from '@livekit/agents-plugin-cartesia';
-import * as deepgram from '@livekit/agents-plugin-deepgram';
+import { type JobContext, type VAD, log, voice } from '@livekit/agents';
 import { CallController } from './call.ts';
 import { chatContextToTurns, repSpeakingSeconds } from './chat.ts';
 import { createClaude } from './claude/client.ts';
-import { type CallConfig, describeMissingCallConfig, readCallConfig } from './config.ts';
+import { describeMissingCallConfig, readCallConfig } from './config.ts';
 import { claudeHints } from './coach/hint.ts';
 import { LiveCoach } from './coach/liveCoach.ts';
 import { CallControls } from './controls/controls.ts';
@@ -33,27 +30,17 @@ import { actOnReply } from './prospect/actions.ts';
 import { ProspectAgent } from './prospect/agent.ts';
 import { ProspectBrain } from './prospect/brain.ts';
 import { REPLY_ID_KEY, ReplyLedger } from './prospect/replies.ts';
-import { describeClaudeFailure, describeVoiceFailure } from './failures.ts';
-import { CallNotices, CostWatch } from './notices.ts';
+import { describeClaudeFailure } from './failures.ts';
+import { buildSession, callNotices, describeError, watchProviders } from './pipeline.ts';
 import { readPriceTable } from './prices.ts';
 import { Publisher } from './publisher.ts';
-import { cartesiaSpeed, chooseVoice, fetchScenario, keytermsFor, ttsLanguage } from './scenario.ts';
+import { runReverseCall } from './reverseCall.ts';
+import { cartesiaSpeed, chooseVoice, fetchScenario } from './scenario.ts';
 
 /** How long to wait for the rep before giving up on telling them anything. */
 const REP_WAIT_MS = 10_000;
 /** How long the call log waits for judgements still running when the call ends. */
 const JUDGE_SETTLE_MS = 5_000;
-/** The voice pipeline's models, named once: they're also how the call is priced. */
-const STT_MODEL = 'nova-3';
-const TTS_MODEL = 'sonic-3';
-/**
- * LiveKit drafts her reply at each pause while the rep is still talking, and drops
- * the draft when they carry on; every draft is a full Claude request. Its default
- * allows three a turn, and in one measured call 25 requests became the 8 replies
- * she said. One keeps the head start on a short turn; after a long one she answers
- * once the rep has finished.
- */
-const PREEMPTIVE_GENERATION = { maxRetries: 1 };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -64,13 +51,6 @@ export function parseDispatchMetadata(text: string): DispatchMetadata | null {
   } catch {
     return null;
   }
-}
-
-async function turnDetection(kind: CallConfig['TURN_DETECTOR']) {
-  // `audio` pins the local model so it never draws on LiveKit Cloud inference.
-  if (kind === 'audio') return new inference.TurnDetector({ version: 'v1-mini' });
-  const { turnDetector } = await import('@livekit/agents-plugin-livekit');
-  return new turnDetector.MultilingualModel();
 }
 
 /** One job = one call. */
@@ -138,6 +118,20 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
   }
   const { scenario, product } = loaded;
 
+  // Roles swapped: the rep plays her, and Sam makes the call.
+  if (meta.mode === 'reverse') {
+    return runReverseCall(ctx, vad, {
+      config,
+      loaded,
+      logger,
+      publisher,
+      fail,
+      setFinalLog: (build) => {
+        finalLog = build;
+      },
+    });
+  }
+
   const voiceChoice = chooseVoice(scenario, config.CARTESIA_VOICE_ID);
   if (!voiceChoice.ok) {
     logger.error({ scenarioId: scenario.id }, voiceChoice.problem);
@@ -151,25 +145,7 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
     }
     const prices = priced.ok ? priced.prices : null;
     const recorder = new CallRecorder(Date.now, prices);
-
-    // What the rep should know mid-call that isn't her talking; kept in the log too.
-    const notices = new CallNotices((notice: CallNoticePayload) => {
-      recorder.event('notice', { ...notice });
-      void publisher.publish(Topics.callNotice, notice);
-    });
-    const costWatch = new CostWatch({
-      warnAboveUsd: prices?.warnAboveUsd ?? null,
-      costSoFar: () => recorder.costSoFar(),
-      onOver: (spent, line) => {
-        logger.warn({ spentUsd: spent }, 'call cost passed the warning line');
-        notices.notify({
-          level: 'warn',
-          code: 'cost',
-          message: `This call has cost $${spent.toFixed(2)} so far, over the $${line} warning line.`,
-        });
-      },
-    });
-    const watchCost = () => costWatch.check();
+    const { notices, watchCost } = callNotices({ recorder, publisher, prices, logger });
     const claude = createClaude(config.ANTHROPIC_API_KEY, config.ANTHROPIC_WORKSPACE_ID);
     // The live coach (coached calls only): metrics, the stage tracker and tips.
     const coach = new LiveCoach({
@@ -238,29 +214,13 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
         }),
     });
 
-    const session = new voice.AgentSession({
-      stt: new deepgram.STT({
-        apiKey: config.DEEPGRAM_API_KEY,
-        model: STT_MODEL,
-        language: scenario.locale,
-        fillerWords: true,
-        interimResults: true,
-        punctuate: true,
-        smartFormat: true,
-        keyterm: keytermsFor(scenario, product),
-      }),
-      tts: new cartesia.TTS({
-        apiKey: config.CARTESIA_API_KEY,
-        model: TTS_MODEL,
-        voice: voiceChoice.voiceId,
-        language: ttsLanguage(scenario.locale),
-        speed: cartesiaSpeed(scenario.voice.speed),
-      }),
+    const session = await buildSession({
+      config,
+      scenario,
+      product,
       vad,
-      turnHandling: {
-        turnDetection: await turnDetection(config.TURN_DETECTOR),
-        preemptiveGeneration: PREEMPTIVE_GENERATION,
-      },
+      voiceId: voiceChoice.voiceId,
+      speed: cartesiaSpeed(scenario.voice.speed),
     });
 
     const controller = new CallController({
@@ -366,13 +326,7 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
         }
       }
     });
-    // What Deepgram heard and Cartesia spoke: both are billed by the amount.
-    session.on(voice.AgentSessionEventTypes.MetricsCollected, ({ metrics }) => {
-      if (metrics.type === 'stt_metrics') recorder.stt(STT_MODEL, metrics.audioDurationMs);
-      else if (metrics.type === 'tts_metrics') recorder.tts(TTS_MODEL, metrics.charactersCount);
-      else return;
-      watchCost();
-    });
+    watchProviders(session, { recorder, notices, logger, watchCost });
     // Who is speaking, live: the coach's talk clock and monologue timer.
     session.on(voice.AgentSessionEventTypes.UserStateChanged, ({ newState, createdAt }) =>
       coach.userState(newState, createdAt),
@@ -380,19 +334,6 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, ({ newState, createdAt }) =>
       coach.agentState(newState, createdAt),
     );
-    // A provider that failed after LiveKit's retries: say so while the call goes on.
-    // (LiveKit ends the call itself after repeated failures; see Close.)
-    session.on(voice.AgentSessionEventTypes.Error, ({ error }) => {
-      logger.warn({ err: error }, 'session error');
-      if (error.type === 'stt_error' || error.type === 'tts_error') {
-        const provider = error.type === 'stt_error' ? 'stt' : 'tts';
-        notices.notify({
-          level: 'error',
-          code: provider,
-          message: describeVoiceFailure(provider, error.error),
-        });
-      }
-    });
     session.on(voice.AgentSessionEventTypes.Close, ({ reason, error }) => {
       // The rep hanging up closes the session (the room input closes on disconnect).
       if (error) void controller.end('error', describeError(error));
@@ -423,15 +364,6 @@ export async function runCall<P>(ctx: JobContext<P>, vad: VAD): Promise<void> {
     logger.error({ err: error }, 'could not set up the call');
     return fail(`The voice agent couldn't set up the call: ${describeError(error as object)}`);
   }
-}
-
-function describeError(error: object): string {
-  const type = 'type' in error ? error.type : undefined;
-  const cause = 'error' in error ? error.error : error;
-  if (type === 'stt_error') return describeVoiceFailure('stt', cause);
-  if (type === 'tts_error') return describeVoiceFailure('tts', cause);
-  if (type === 'llm_error') return describeClaudeFailure(cause);
-  return cause instanceof Error ? cause.message : 'The voice pipeline failed.';
 }
 
 /** The log of a call that never got going: its reason, and no turns. */

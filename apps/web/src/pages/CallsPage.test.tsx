@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Router } from 'wouter';
 import { memoryLocation } from 'wouter/memory-location';
-import { CALL_ID, callDetail } from '../test/callDetail.ts';
+import { CALL_ID, callDetail, reverseCallDetail } from '../test/callDetail.ts';
 import { CallsPage } from './CallsPage.tsx';
 
 /** A fetch input as the URL string the page asked for. */
@@ -54,6 +54,15 @@ describe('CallsPage', () => {
     expect(within(row).getByRole('link')).toHaveAttribute('href', `/calls/${CALL_ID}`);
     expect(within(rows[1]!).getByText('reviewing…')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('Meeting booked')).toBeInTheDocument();
+  });
+
+  it("marks a reverse call, says how it ended from Sam's side, and offers his notes for a score", async () => {
+    mockCalls([reverseCallDetail().call]);
+    renderPage();
+    const [, row] = await screen.findAllByRole('row');
+    expect(within(row!).getByText('Reverse')).toBeInTheDocument();
+    expect(within(row!).getByText('Sam booked the meeting')).toBeInTheDocument();
+    expect(within(row!).getByText('notes')).toBeInTheDocument();
   });
 
   it('flags a call that cost more than the warning line', async () => {

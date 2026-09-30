@@ -20,6 +20,7 @@ import { webDistDir } from './paths.ts';
 import { readPriceTable } from './prices.ts';
 import { cartesiaVoiceLibrary } from './prospects/voices.ts';
 import { type ProspectWriter, claudeProspectWriter } from './prospects/writer.ts';
+import { type RepNoter, claudeRepNoter } from './review/noter.ts';
 import { ReviewQueue } from './review/queue.ts';
 import { type Reviewer, claudeReviewer } from './review/reviewer.ts';
 import { registerCallLogRoutes } from './routes/callLog.ts';
@@ -41,6 +42,11 @@ export interface AppDeps {
    * ANTHROPIC_API_KEY (reviews then fail, saying so). Tests pass a stub.
    */
   reviewer?: Reviewer | null;
+  /**
+   * Writes a reverse call's notes on Sam's lines. Omitted: Claude on REVIEW_MODEL,
+   * or none without ANTHROPIC_API_KEY (like the reviewer). Tests pass a stub.
+   */
+  repNoter?: RepNoter | null;
   /**
    * Writes "Add new" prospects. Omitted: Claude on REVIEW_MODEL, with voices
    * from Cartesia when CARTESIA_API_KEY is set, or none without
@@ -70,7 +76,7 @@ export interface AppDeps {
 /** What the routes get: the deps with the price table resolved. */
 export type AppContext = Omit<
   AppDeps,
-  'prices' | 'livekitCheck' | 'prospectWriter' | 'demoWriter' | 'cheatSheetWriter'
+  'prices' | 'livekitCheck' | 'prospectWriter' | 'demoWriter' | 'cheatSheetWriter' | 'repNoter'
 > & {
   prices: PriceTable;
 };
@@ -91,6 +97,15 @@ function defaultReviewer(config: Config, prices: PriceTable): Reviewer | null {
     messages: claudeFor(config.ANTHROPIC_API_KEY, config).beta.messages,
     model: config.REVIEW_MODEL,
     effort: config.REVIEW_EFFORT,
+    prices,
+  });
+}
+
+function defaultRepNoter(config: Config, prices: PriceTable): RepNoter | null {
+  if (!config.ANTHROPIC_API_KEY) return null;
+  return claudeRepNoter({
+    messages: claudeFor(config.ANTHROPIC_API_KEY, config).beta.messages,
+    model: config.REVIEW_MODEL,
     prices,
   });
 }
@@ -188,7 +203,15 @@ export async function buildApp(
   const context: AppContext = { ...deps, prices: deps.prices ?? (await readPriceTable()) };
   const reviewer =
     deps.reviewer === undefined ? defaultReviewer(deps.config, context.prices) : deps.reviewer;
-  const queue = new ReviewQueue({ db: deps.db, catalog: deps.catalog, reviewer, logger: app.log });
+  const noter =
+    deps.repNoter === undefined ? defaultRepNoter(deps.config, context.prices) : deps.repNoter;
+  const queue = new ReviewQueue({
+    db: deps.db,
+    catalog: deps.catalog,
+    reviewer,
+    noter,
+    logger: app.log,
+  });
   app.decorate('reviewQueue', queue);
   const demoQueue = new DemoQueue({
     db: deps.db,

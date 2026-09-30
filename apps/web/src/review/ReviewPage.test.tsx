@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Router } from 'wouter';
 import { memoryLocation } from 'wouter/memory-location';
-import { CALL_ID, callDetail, olderReviewResult } from '../test/callDetail.ts';
+import { CALL_ID, callDetail, olderReviewResult, reverseCallDetail } from '../test/callDetail.ts';
 import { ReviewPage } from './ReviewPage.tsx';
 import { POLL_MS } from './useCallDetail.ts';
 
@@ -229,6 +229,66 @@ describe('ReviewPage', () => {
     );
     expect(cost.getByText('not priced')).toBeInTheDocument();
     expect(cost.getByText(/add their model to config\/prices.json/)).toBeInTheDocument();
+  });
+
+  describe('a reverse call, where the rep played her and Sam made the call', () => {
+    it("shows Sam's lines with the technique behind each, what to copy, and no score", async () => {
+      mockApi([reverseCallDetail()]);
+      renderPage();
+      expect(
+        await screen.findByRole('heading', { name: /Sam called you as Claire Hughes/ }),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Sam booked the meeting')).toBeInTheDocument();
+      expect(screen.getByText('Tuesday at 10am')).toBeInTheDocument();
+      expect(
+        screen.getByText(/respected her meeting and closed on a specific slot/),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Ask for thirty seconds first.')).toBeInTheDocument();
+      expect(screen.queryByLabelText(/out of 100/)).toBeNull();
+
+      const lines = within(screen.getByRole('list', { name: 'The call' })).getAllByRole('listitem');
+      expect(lines).toHaveLength(4);
+      expect(lines[0]).toHaveTextContent('You, as Claire');
+      expect(lines[1]).toHaveTextContent('Sam');
+      expect(lines[1]).toHaveTextContent('Permission opener');
+      expect(lines[1]).toHaveTextContent('She gets to say yes before any pitch');
+      expect(lines[2]).not.toHaveTextContent('Permission opener');
+      expect(lines[3]).toHaveTextContent('Specific close');
+
+      const cost = screen.getByRole('region', { name: /Cost/ });
+      expect(cost).toHaveTextContent("Sam's replies");
+      expect(cost).toHaveTextContent('These notes');
+      expect(cost).toHaveTextContent("Sam's voice");
+      expect(screen.getByText(/Notes by claude-opus-5-5 for \$0\.031/)).toBeInTheDocument();
+    });
+
+    it('says it is writing the notes until they are ready', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      mockApi([reverseCallDetail({ status: 'running', notes: null }), reverseCallDetail()]);
+      renderPage();
+      await act(() => vi.advanceTimersByTimeAsync(0));
+      expect(screen.getByText("Writing notes on Sam's lines…")).toBeInTheDocument();
+      expect(screen.getByText('Claire Hughes.')).toBeInTheDocument();
+
+      await act(() => vi.advanceTimersByTimeAsync(POLL_MS));
+      expect(screen.queryByText("Writing notes on Sam's lines…")).toBeNull();
+      expect(screen.getByText('Specific close')).toBeInTheDocument();
+    });
+
+    it('says why a call has no notes', async () => {
+      mockApi([
+        reverseCallDetail({
+          status: 'skipped',
+          notes: null,
+          model: null,
+          costUsd: null,
+          error: 'No notes for this call: you did not say anything as her.',
+        }),
+      ]);
+      renderPage();
+      expect(await screen.findByText('No notes for this call')).toBeInTheDocument();
+      expect(screen.getByText(/you did not say anything as her/)).toBeInTheDocument();
+    });
   });
 
   it('says so when the call does not exist', async () => {

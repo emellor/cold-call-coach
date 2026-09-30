@@ -3,7 +3,14 @@ import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
 import { AppHeader } from '../components/AppHeader.tsx';
 import { fetchCalls } from '../lib/api.ts';
-import { OUTCOME_LABELS, OUTCOME_TONE, dateTime, duration, money } from '../review/format.ts';
+import {
+  OUTCOME_LABELS,
+  OUTCOME_TONE,
+  REVERSE_OUTCOME_LABELS,
+  dateTime,
+  duration,
+  money,
+} from '../review/format.ts';
 
 type State =
   | { kind: 'loading' }
@@ -22,9 +29,13 @@ function Cost({ call }: { call: CallSummary }) {
 
 function Score({ call }: { call: CallSummary }) {
   if (call.overallScore !== null) return <>{call.overallScore}</>;
+  const reverse = call.mode === 'reverse';
   if (call.reviewStatus === 'pending' || call.reviewStatus === 'running') {
-    return <span className="text-slate-400">reviewing…</span>;
+    return <span className="text-slate-400">{reverse ? 'writing notes…' : 'reviewing…'}</span>;
   }
+  // A reverse call is Sam's, so it has notes on his lines rather than a score.
+  if (reverse && call.reviewStatus === 'ready')
+    return <span className="text-slate-400">notes</span>;
   return <span className="text-slate-600">–</span>;
 }
 
@@ -90,6 +101,14 @@ export function CallsPage() {
                       </Link>
                     </td>
                     <td className="py-2 pr-3">
+                      {call.mode === 'reverse' && (
+                        <span
+                          className="mr-2 rounded bg-fuchsia-950 px-1.5 py-0.5 text-xs text-fuchsia-200"
+                          title="You played her, and Sam made the call"
+                        >
+                          Reverse
+                        </span>
+                      )}
                       {call.scenario.prospectName}
                       <span className="ml-2 text-slate-500">{call.scenario.difficulty}</span>
                     </td>
@@ -98,7 +117,11 @@ export function CallsPage() {
                         <span
                           className={`rounded-full px-2 py-0.5 text-xs ${OUTCOME_TONE[call.outcome]}`}
                         >
-                          {OUTCOME_LABELS[call.outcome]}
+                          {
+                            (call.mode === 'reverse' ? REVERSE_OUTCOME_LABELS : OUTCOME_LABELS)[
+                              call.outcome
+                            ]
+                          }
                         </span>
                       ) : (
                         <span className="text-slate-500">{call.status}</span>

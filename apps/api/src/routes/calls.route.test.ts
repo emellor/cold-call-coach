@@ -81,6 +81,24 @@ describe.skipIf(!hasDb)('POST /api/calls (real Postgres)', () => {
     });
   });
 
+  it('dispatches a reverse call, where Sam calls the rep and the rep plays her', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/calls',
+      payload: { scenarioId: 'medium-finance-director', mode: 'reverse' },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = CreateCallResponse.parse(res.json());
+    const [row] = await db.select().from(calls).where(eq(calls.id, body.callId));
+    expect(row).toMatchObject({ mode: 'reverse', status: 'ringing' });
+    const claims = await new TokenVerifier(
+      livekitEnv.LIVEKIT_API_KEY,
+      livekitEnv.LIVEKIT_API_SECRET,
+    ).verify(body.token);
+    const dispatch = claims.roomConfig?.agents[0];
+    expect(DispatchMetadata.parse(JSON.parse(dispatch?.metadata ?? '')).mode).toBe('reverse');
+  });
+
   it('rejects an invalid mode with 400 and the zod issues', async () => {
     const res = await app.inject({
       method: 'POST',

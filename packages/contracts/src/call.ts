@@ -1,7 +1,11 @@
 import { z } from 'zod';
 
-/** Coached calls show the live panel and tips; exam calls are review-only. */
-export const CallMode = z.enum(['coached', 'exam']);
+/**
+ * Coached calls show the live panel and tips; exam calls are review-only. In a
+ * reverse call the roles swap: the rep plays the prospect, and Sam, Claude as an
+ * expert rep, makes the call to her.
+ */
+export const CallMode = z.enum(['coached', 'exam', 'reverse']);
 export type CallMode = z.infer<typeof CallMode>;
 
 export const CallPhase = z.enum(['ringing', 'connected', 'ended']);

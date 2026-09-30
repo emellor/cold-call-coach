@@ -3,8 +3,9 @@ import { CallMode, CallOutcome, CallPhase, ScenarioId } from './call.ts';
 import { CallTurn } from './callLog.ts';
 import { CostBreakdown } from './cost.ts';
 import { CallMetrics } from './metrics.ts';
+import { RepNotes } from './repNotes.ts';
 import { ReviewResult, ReviewStatus } from './review.ts';
-import { Difficulty, ProductSpec, ScenarioSpec } from './scenario.ts';
+import { Difficulty, ProductSpec, ProspectSpec, RubricSpec, ScenarioSpec } from './scenario.ts';
 
 /** Every non-2xx JSON response from the API. */
 export const ApiError = z.object({
@@ -76,6 +77,14 @@ export type ScenarioSummary = z.infer<typeof ScenarioSummary>;
 export const ScenarioListResponse = z.object({ scenarios: z.array(ScenarioSummary) });
 export type ScenarioListResponse = z.infer<typeof ScenarioListResponse>;
 
+/**
+ * `GET /api/scenarios/:id/character`: the whole of her, private facts included,
+ * for a reverse call, where the rep plays her. The one route that sends them to
+ * the web; reading it before calling her gives away what she's hiding.
+ */
+export const CharacterResponse = z.object({ prospect: ProspectSpec });
+export type CharacterResponse = z.infer<typeof CharacterResponse>;
+
 /** `POST /api/scenarios`: "Add new", a prospect described in the rep's own words. */
 export const CreateScenarioRequest = z.object({
   description: z
@@ -97,6 +106,11 @@ export type CreateScenarioResponse = z.infer<typeof CreateScenarioResponse>;
 export const InternalScenarioResponse = z.object({
   scenario: ScenarioSpec,
   product: ProductSpec,
+  /**
+   * Her rubric, whose 10/10 marks Sam plays to in a reverse call. Optional, so an
+   * agent deployed before its API still loads scenarios; Sam then plays without it.
+   */
+  rubric: RubricSpec.optional(),
 });
 export type InternalScenarioResponse = z.infer<typeof InternalScenarioResponse>;
 
@@ -137,7 +151,10 @@ export type CallListResponse = z.infer<typeof CallListResponse>;
 
 export const CallReview = z.object({
   status: ReviewStatus,
+  /** The rep's review; null for a reverse call, which has notes instead. */
   result: ReviewResult.nullable(),
+  /** A reverse call's notes on Sam's lines, in place of a review. */
+  notes: RepNotes.nullable(),
   error: z.string().nullable(),
   model: z.string().nullable(),
   costUsd: z.number().nonnegative().nullable(),

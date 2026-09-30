@@ -1,12 +1,17 @@
-import type { TranscriptTurn } from '@ccc/core';
+import type { Speaker, TranscriptTurn } from '@ccc/core';
 import type { llm } from '@livekit/agents';
 
 /**
  * The spoken turns in LiveKit's chat context, in order. System items (the
  * framework copies the agent's instructions in) and tool items are skipped:
- * the persona travels in Claude's `system` field instead.
+ * the persona travels in Claude's `system` field instead. `agent` is who the
+ * agent plays: the prospect, or the rep (Sam) in a reverse call.
  */
-export function chatContextToTurns(chatCtx: llm.ChatContext): TranscriptTurn[] {
+export function chatContextToTurns(
+  chatCtx: llm.ChatContext,
+  agent: Speaker = 'prospect',
+): TranscriptTurn[] {
+  const human: Speaker = agent === 'prospect' ? 'rep' : 'prospect';
   const turns: TranscriptTurn[] = [];
   for (const item of chatCtx.items) {
     if (item.type !== 'message') continue;
@@ -14,7 +19,7 @@ export function chatContextToTurns(chatCtx: llm.ChatContext): TranscriptTurn[] {
     const text = item.textContent;
     if (!text) continue;
     turns.push({
-      speaker: item.role === 'user' ? 'rep' : 'prospect',
+      speaker: item.role === 'user' ? human : agent,
       text,
       interrupted: item.interrupted,
     });

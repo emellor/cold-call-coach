@@ -1,4 +1,4 @@
-import type { CallDetail, CallReview, ReviewResult } from '@ccc/contracts';
+import type { CallDetail, CallReview, CallTurn, RepNotes, ReviewResult } from '@ccc/contracts';
 
 export const CALL_ID = '7b0a4e2c-2b1f-4f55-9a0c-6d3f1c1e8a10';
 
@@ -103,6 +103,7 @@ export const olderReviewResult: ReviewResult = {
 const review = (patch: Partial<CallReview>): CallReview => ({
   status: 'ready',
   result: reviewResult,
+  notes: null,
   error: null,
   model: 'claude-opus-5',
   costUsd: 0.0625,
@@ -202,6 +203,77 @@ export function callDetail(reviewPatch: Partial<CallReview> | null = {}): CallDe
         { key: 'review', model: 'claude-opus-5', quantity: null, unit: 'tokens', usd: 0.0625 },
         { key: 'stt', model: 'nova-3', quantity: 1.38, unit: 'minutes', usd: 0.0106 },
         { key: 'tts', model: 'sonic-3', quantity: 1_802, unit: 'characters', usd: 0.0901 },
+      ],
+      incomplete: false,
+      warnAboveUsd: 2,
+      overBudget: false,
+    },
+  };
+}
+
+const turn = (idx: number, speaker: CallTurn['speaker'], text: string): CallTurn => ({
+  idx,
+  speaker,
+  text,
+  startMs: idx * 3_000,
+  endMs: idx * 3_000 + 2_000,
+  interrupted: false,
+  stateAfter: null,
+});
+
+export const repNotes: RepNotes = {
+  notes: [
+    {
+      turn: 2,
+      technique: 'Permission opener',
+      note: 'She gets to say yes before any pitch, so she keeps listening.',
+    },
+    {
+      turn: 4,
+      technique: 'Specific close',
+      note: 'She said she was busy, so a short, concrete slot is easy to agree to.',
+    },
+  ],
+  summary: 'Sam asked for thirty seconds, respected her meeting and closed on a specific slot.',
+  lessons: ['Ask for thirty seconds first.', 'Turn "I\'m busy" into a specific slot.'],
+};
+
+/** A reverse call: the rep played Claire, and Sam made the call and booked the meeting. */
+export function reverseCallDetail(reviewPatch: Partial<CallReview> = {}): CallDetail {
+  const base = callDetail(null);
+  return {
+    ...base,
+    call: {
+      ...base.call,
+      mode: 'reverse',
+      outcome: 'meeting_booked',
+      overallScore: null,
+      reviewStatus: reviewPatch.status ?? 'ready',
+    },
+    outcomeReason: 'Tuesday at 10am',
+    turns: [
+      turn(0, 'prospect', 'Claire Hughes.'),
+      turn(1, 'rep', "Hi Claire, it's Sam from WattGuard. Have I caught you at a bad time?"),
+      turn(2, 'prospect', "I'm about to go into a meeting"),
+      turn(3, 'rep', "Then I'll be quick: would Tuesday at ten work for twenty minutes?"),
+    ],
+    review: {
+      status: 'ready',
+      result: null,
+      notes: repNotes,
+      error: null,
+      model: 'claude-opus-5-5',
+      costUsd: 0.031,
+      updatedAt: '2026-09-30T10:02:00.000Z',
+      ...reviewPatch,
+    },
+    cost: {
+      totalUsd: 0.1283,
+      lines: [
+        { key: 'rep', model: 'claude-opus-5-5', quantity: 9_800, unit: 'tokens', usd: 0.0212 },
+        { key: 'review', model: 'claude-opus-5-5', quantity: null, unit: 'tokens', usd: 0.031 },
+        { key: 'stt', model: 'nova-3', quantity: 1.2, unit: 'minutes', usd: 0.0092 },
+        { key: 'tts', model: 'sonic-3', quantity: 1_340, unit: 'characters', usd: 0.067 },
       ],
       incomplete: false,
       warnAboveUsd: 2,

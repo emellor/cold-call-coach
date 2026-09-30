@@ -72,7 +72,7 @@ export interface ProspectAgentOptions {
 }
 
 /** Leads the reply with its id in `extra`, which LiveKit copies onto the committed message. */
-function tagWithReplyId(id: string, text: ReadableStream<string>) {
+export function tagWithReplyId(id: string, text: ReadableStream<string>) {
   return text.pipeThrough(
     new TransformStream<string, llm.ChatChunk | string>({
       start(controller) {

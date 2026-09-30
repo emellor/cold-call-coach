@@ -2,13 +2,15 @@
 // queued when its log arrives (or on rerun), then: metrics from the turns, how
 // she took each rep turn (from the judgement events), one Claude call, every
 // quote checked against the transcript, and the result stored with its model,
-// rubric version and cost.
+// rubric version and cost. A reverse call, where Sam made the call and the rep
+// played her, gets notes on Sam's lines in its place (noter.ts).
 import { type ReviewStatus, type ScenarioCatalog, ScenarioSpec } from '@ccc/contracts';
 import { computeMetrics, controlsUsed, finalizeReview, turnReactions } from '@ccc/core';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { metricTurns } from '../calls/store.ts';
 import type { Db } from '../db/client.ts';
 import { calls, events, reviews, scenarios } from '../db/schema.ts';
+import type { RepNoter } from './noter.ts';
 import type { Reviewer } from './reviewer.ts';
 
 export interface QueueLogger {
@@ -22,10 +24,13 @@ export const NO_REVIEWER_MESSAGE =
 
 class Skip extends Error {}
 
+type Call = typeof calls.$inferSelect;
+
 export class ReviewQueue {
   readonly #db: Db;
   readonly #catalog: ScenarioCatalog;
   readonly #reviewer: Reviewer | null;
+  readonly #noter: RepNoter | null;
   readonly #log: QueueLogger;
   readonly #waiting: string[] = [];
   #running: Promise<void> | null = null;
@@ -34,11 +39,14 @@ export class ReviewQueue {
     db: Db;
     catalog: ScenarioCatalog;
     reviewer: Reviewer | null;
+    /** A reverse call's notes; none without ANTHROPIC_API_KEY, like the reviewer. */
+    noter?: RepNoter | null;
     logger: QueueLogger;
   }) {
     this.#db = options.db;
     this.#catalog = options.catalog;
     this.#reviewer = options.reviewer;
+    this.#noter = options.noter ?? null;
     this.#log = options.logger;
   }
 
@@ -92,7 +100,13 @@ export class ReviewQueue {
     const started = performance.now();
     try {
       await this.#set(callId, { status: 'running' });
-      const input = await this.#load(callId);
+      const [call] = await this.#db.select().from(calls).where(eq(calls.id, callId));
+      if (!call) throw new Error(`No call ${callId}.`);
+      if (call.mode === 'reverse') {
+        await this.#writeNotes(call, started);
+        return;
+      }
+      const input = await this.#load(call);
       if (!this.#reviewer) throw new Error(NO_REVIEWER_MESSAGE);
       const outcome = await this.#reviewer(input.prompt);
       const { result, dropped } = finalizeReview(
@@ -133,9 +147,59 @@ export class ReviewQueue {
     }
   }
 
-  async #load(callId: string) {
-    const [call] = await this.#db.select().from(calls).where(eq(calls.id, callId));
-    if (!call) throw new Error(`No call ${callId}.`);
+  /** The scenario as it was when the call was made. */
+  async #scenario(call: Call): Promise<ScenarioSpec> {
+    const [stored] = await this.#db
+      .select({ spec: scenarios.spec })
+      .from(scenarios)
+      .where(and(eq(scenarios.id, call.scenarioId), eq(scenarios.version, call.scenarioVersion)));
+    return ScenarioSpec.parse(stored?.spec);
+  }
+
+  /** A reverse call: notes on Sam's lines, stored where its review would be. */
+  async #writeNotes(call: Call, started: number): Promise<void> {
+    if (call.connectedAt === null) {
+      throw new Skip('The call never connected, so there is nothing to write notes on.');
+    }
+    const transcript = await metricTurns(this.#db, call.id);
+    if (!transcript.some((t) => t.speaker === 'prospect')) {
+      throw new Skip('No notes for this call: you did not say anything as her.');
+    }
+    if (!transcript.some((t) => t.speaker === 'rep')) {
+      throw new Skip("No notes for this call: Sam didn't get to say anything.");
+    }
+    if (!this.#noter) throw new Error(NO_REVIEWER_MESSAGE);
+    const outcome = await this.#noter({
+      scenario: await this.#scenario(call),
+      product: this.#catalog.product,
+      turns: transcript,
+      outcome: call.outcome ?? 'hung_up_by_prospect',
+      outcomeReason: call.outcomeReason,
+    });
+    await this.#set(call.id, {
+      status: 'ready',
+      result: null,
+      notes: outcome.notes,
+      error: null,
+      model: outcome.model,
+      rubricId: null,
+      rubricVersion: null,
+      costUsd: outcome.costUsd,
+    });
+    this.#log.info(
+      {
+        callId: call.id,
+        model: outcome.model,
+        ms: Math.round(performance.now() - started),
+        costUsd: outcome.costUsd,
+        notes: outcome.notes.notes.length,
+      },
+      'reverse call notes ready',
+    );
+  }
+
+  async #load(call: Call) {
+    const callId = call.id;
     if (call.connectedAt === null) {
       throw new Skip('She never picked up, so there is nothing to review.');
     }
@@ -143,11 +207,7 @@ export class ReviewQueue {
     if (!transcript.some((t) => t.speaker === 'rep')) {
       throw new Skip('Nothing to review: you did not say anything on this call.');
     }
-    const [stored] = await this.#db
-      .select({ spec: scenarios.spec })
-      .from(scenarios)
-      .where(and(eq(scenarios.id, call.scenarioId), eq(scenarios.version, call.scenarioVersion)));
-    const scenario = ScenarioSpec.parse(stored?.spec);
+    const scenario = await this.#scenario(call);
     const rubric = this.#catalog.rubrics.find((r) => r.id === scenario.rubricId);
     if (!rubric) throw new Error(`The rubric "${scenario.rubricId}" is not loaded.`);
     // In the order they happened: after a rewind, the retake's judgement is the later one.

@@ -12,6 +12,7 @@ import {
   structuredFormat,
 } from '@ccc/core';
 import { PROSPECT_TOOLS } from '../prospect/tools.ts';
+import { REP_TOOLS } from '../rep/tools.ts';
 
 /**
  * Room for one or two spoken sentences, a tool call, and the adaptive thinking
@@ -19,6 +20,12 @@ import { PROSPECT_TOOLS } from '../prospect/tools.ts';
  * thinks more at the same effort, and a reply cut short is heard cut short.
  */
 export const PROSPECT_MAX_TOKENS = 1_024;
+
+/**
+ * Sam's reply in a reverse call: one to three spoken sentences and maybe a tool
+ * call, with the same headroom for thinking as hers.
+ */
+export const REP_MAX_TOKENS = 1_024;
 
 /** The judge's JSON is small; the rest is headroom for adaptive thinking. */
 export const JUDGE_MAX_TOKENS = 2048;
@@ -56,6 +63,29 @@ export function prospectRequest(input: {
     max_tokens: PROSPECT_MAX_TOKENS,
     tools: PROSPECT_TOOLS,
     system: [{ type: 'text', text: input.persona, cache_control: { type: 'ephemeral' } }],
+    messages: withHistoryBreakpoint(input.messages),
+    ...(Object.keys(options.effort).length ? { output_config: options.effort } : {}),
+    ...options.fallbacks,
+  };
+}
+
+/**
+ * Sam's request in a reverse call, built as hers is: his system prompt is fixed
+ * for the call, so it caches with the tools from turn 2, and the conversation
+ * is cached up to his last line. No sampling parameters.
+ */
+export function repRequest(input: {
+  model: string;
+  effort: Effort;
+  system: string;
+  messages: ChatTurn[];
+}): BetaMessageStreamParams {
+  const options = modelOptions(input.model, input.effort);
+  return {
+    model: input.model,
+    max_tokens: REP_MAX_TOKENS,
+    tools: REP_TOOLS,
+    system: [{ type: 'text', text: input.system, cache_control: { type: 'ephemeral' } }],
     messages: withHistoryBreakpoint(input.messages),
     ...(Object.keys(options.effort).length ? { output_config: options.effort } : {}),
     ...options.fallbacks,

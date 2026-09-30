@@ -28,7 +28,7 @@ export const PriceTable = z.object({
 });
 export type PriceTable = z.infer<typeof PriceTable>;
 
-export const CostKey = z.enum(['prospect', 'judge', 'hint', 'review', 'stt', 'tts']);
+export const CostKey = z.enum(['prospect', 'rep', 'judge', 'hint', 'review', 'stt', 'tts']);
 export type CostKey = z.infer<typeof CostKey>;
 
 /** One priced line of a call's cost. */

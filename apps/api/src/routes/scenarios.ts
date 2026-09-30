@@ -1,4 +1,5 @@
 import {
+  CharacterResponse,
   CreateScenarioRequest,
   CreateScenarioResponse,
   InternalScenarioResponse,
@@ -68,6 +69,15 @@ export function registerScenarioRoutes(
     );
   });
 
+  // A reverse call's character card: the rep plays her, so they get the whole
+  // of her, private facts included. The one route that sends those to the web.
+  app.get('/api/scenarios/:id/character', async (request, reply) => {
+    const { id } = ScenarioParams.parse(request.params);
+    const scenario = await latestScenario(db, id);
+    if (!scenario) return reply.code(404).send({ error: `Unknown scenario: ${id}` });
+    return CharacterResponse.parse({ prospect: scenario.prospect });
+  });
+
   // Only a prospect added with "Add new" can be removed, and only from the
   // picker: her calls keep their history.
   app.delete('/api/scenarios/:id', async (request, reply) => {
@@ -87,7 +97,8 @@ export function registerScenarioRoutes(
       const { id } = ScenarioParams.parse(request.params);
       const scenario = await latestScenario(db, id);
       if (!scenario) return reply.code(404).send({ error: `Unknown scenario: ${id}` });
-      return InternalScenarioResponse.parse({ scenario, product: catalog.product });
+      const rubric = catalog.rubrics.find((r) => r.id === scenario.rubricId);
+      return InternalScenarioResponse.parse({ scenario, product: catalog.product, rubric });
     },
   );
 }

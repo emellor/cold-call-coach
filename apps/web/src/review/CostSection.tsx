@@ -1,8 +1,18 @@
-import type { CostBreakdown } from '@ccc/contracts';
+import type { CostBreakdown, CostKey } from '@ccc/contracts';
 import { COST_LABELS, costDetail, money } from './format.ts';
 
-/** What the call cost, line by line, with a warning over the price table's line. */
-export function CostSection({ cost }: { cost: CostBreakdown }) {
+/**
+ * What the call cost, line by line, with a warning over the price table's line.
+ * `labels` renames lines for a call that isn't the rep's own, such as a reverse
+ * call's notes, priced where a review would be.
+ */
+export function CostSection({
+  cost,
+  labels = {},
+}: {
+  cost: CostBreakdown;
+  labels?: Partial<Record<CostKey, string>>;
+}) {
   const total = `${money(cost.totalUsd)}${cost.incomplete ? '+' : ''}`;
   return (
     <section
@@ -30,7 +40,7 @@ export function CostSection({ cost }: { cost: CostBreakdown }) {
           {cost.lines.map((line) => (
             <tr key={line.key} className="border-t border-slate-800 first:border-t-0">
               <th scope="row" className="py-1.5 pr-3 text-left font-normal text-slate-300">
-                {COST_LABELS[line.key]}
+                {labels[line.key] ?? COST_LABELS[line.key]}
               </th>
               <td className="py-1.5 pr-3 text-xs text-slate-500">{costDetail(line)}</td>
               <td className="py-1.5 text-right tabular-nums">

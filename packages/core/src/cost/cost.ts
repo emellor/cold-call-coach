@@ -24,7 +24,7 @@ export function costLines(
   review: { model: string | null; costUsd: number | null } | null,
 ): CostLine[] {
   const lines: CostLine[] = [];
-  for (const key of ['prospect', 'judge', 'hint'] as const) {
+  for (const key of ['prospect', 'rep', 'judge', 'hint'] as const) {
     const lane = usage?.[key];
     if (!lane) continue;
     lines.push({

@@ -124,8 +124,28 @@ const OUTCOME_MESSAGES: Record<CallOutcome, string> = {
   error: 'The call failed.',
 };
 
-/** The ended-call message: the outcome, plus the agent's reason where it adds something. */
-export function describeOutcome(outcome: CallOutcome, reason?: string): string {
+/**
+ * The ended-call message: the outcome, plus the agent's reason where it adds
+ * something. In a reverse call the rep is her and Sam is the rep.
+ */
+export function describeOutcome(
+  outcome: CallOutcome,
+  reason?: string,
+  mode: CallMode = 'coached',
+): string {
+  if (mode === 'reverse') {
+    switch (outcome) {
+      case 'meeting_booked':
+        return reason ? `Sam booked the meeting: ${reason}.` : 'Sam booked the meeting.';
+      case 'hung_up_by_prospect':
+        return 'You hung up.';
+      case 'ended_by_rep':
+        return 'Sam ended the call.';
+      case 'timeout':
+      case 'error':
+        return reason ?? OUTCOME_MESSAGES[outcome];
+    }
+  }
   switch (outcome) {
     case 'meeting_booked':
       return reason ? `Meeting booked: ${reason}.` : OUTCOME_MESSAGES.meeting_booked;
@@ -229,10 +249,14 @@ export function useCall() {
           return {
             ...ended,
             outcome: 'meeting_booked',
-            message: describeOutcome('meeting_booked', v.meeting || undefined),
+            message: describeOutcome('meeting_booked', v.meeting || undefined, v.mode),
           };
         }
-        return { ...ended, outcome, message: outcome ? describeOutcome(outcome, reason) : reason };
+        return {
+          ...ended,
+          outcome,
+          message: outcome ? describeOutcome(outcome, reason, v.mode) : reason,
+        };
       });
       if (!room) return;
       if (before)
@@ -339,7 +363,12 @@ export function useCall() {
             () => undefined,
           )
         : undefined;
-    finish('ended_by_rep', undefined, told);
+    // In a reverse call the rep is her, so hanging up is her ending the call.
+    finish(
+      callRef.current.mode === 'reverse' ? 'hung_up_by_prospect' : 'ended_by_rep',
+      undefined,
+      told,
+    );
   }, [finish]);
 
   const notify = useCallback((text: string, tone: Notice['tone']) => {

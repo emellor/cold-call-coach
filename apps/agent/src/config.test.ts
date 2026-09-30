@@ -71,7 +71,7 @@ describe('readCallConfig', () => {
     INTERNAL_API_SECRET: 'dev-only-internal-secret',
   };
 
-  it('defaults both Claude lanes to Opus 5 at low effort, the local API and the plan’s turn detector', () => {
+  it('defaults every Claude lane to Opus 5.5 at low effort, the local API and the plan’s turn detector', () => {
     const result = readCallConfig({
       ...keys,
       CARTESIA_VOICE_ID: '',
@@ -87,8 +87,23 @@ describe('readCallConfig', () => {
         PROSPECT_EFFORT: 'low',
         COACH_MODEL: 'claude-opus-5-5',
         COACH_EFFORT: 'low',
+        REP_MODEL: 'claude-opus-5-5',
+        REP_EFFORT: 'low',
         TURN_DETECTOR: 'multilingual',
       },
+    });
+  });
+
+  it("takes Sam's lane and voice for reverse calls from the environment", () => {
+    const result = readCallConfig({
+      ...keys,
+      REP_MODEL: 'claude-sonnet-5',
+      REP_EFFORT: 'medium',
+      REP_VOICE_ID: ' voice-sam ',
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      config: { REP_MODEL: 'claude-sonnet-5', REP_EFFORT: 'medium', REP_VOICE_ID: 'voice-sam' },
     });
   });
 

@@ -110,6 +110,8 @@ export const reviews = pgTable('reviews', {
   model: text('model'),
   /** ReviewResult; parse on the way out. */
   result: jsonb('result').$type<unknown>(),
+  /** A reverse call's RepNotes, in place of a review (migration 0011); parse on the way out. */
+  notes: jsonb('notes').$type<unknown>(),
   error: text('error'),
   costUsd: usd('cost_usd'),
   createdAt: timestamptz('created_at').notNull().defaultNow(),

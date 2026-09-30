@@ -38,8 +38,8 @@ export interface TurnTiming {
   committedAt: number;
 }
 
-type Lane = 'prospect' | 'judge' | 'hint';
-const LANES: readonly Lane[] = ['prospect', 'judge', 'hint'];
+type Lane = 'prospect' | 'rep' | 'judge' | 'hint';
+const LANES: readonly Lane[] = ['prospect', 'rep', 'judge', 'hint'];
 
 interface RecordedTurn extends Omit<LoggedTurn, 'stateAfter'> {
   /** The brain's number for a rep turn, to find its judged state at the end. */
@@ -95,7 +95,16 @@ export class CallRecorder {
     this.#words.push(...words);
   }
 
-  repTurn(input: { text: string; timing: TurnTiming; repTurn: number }): number {
+  /**
+   * A rep turn: the human's on a normal call, with the words Deepgram timed; in a
+   * reverse call Sam's, which have no STT words and can be talked over.
+   */
+  repTurn(input: {
+    text: string;
+    timing: TurnTiming;
+    repTurn: number;
+    interrupted?: boolean;
+  }): number {
     const words = this.#words.filter((w) => w.startTime !== undefined && w.endTime !== undefined);
     this.#words = [];
     // Without metrics, assume 150 words a minute.
@@ -107,7 +116,7 @@ export class CallRecorder {
       startMs,
       endMs,
       words: words.length ? this.#anchor(words, startMs) : null,
-      interrupted: false,
+      interrupted: input.interrupted ?? false,
       repTurn: input.repTurn,
       stateAfter: null,
     });
